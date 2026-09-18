@@ -1,13 +1,34 @@
 #!/usr/bin/env python3
 """List Claude Code sessions as JSON for DMS Agent history."""
-import json, os, glob, time, sys
+import json, os, glob, re, sys
 
 action = sys.argv[1] if len(sys.argv) > 1 else "list"
-base = os.path.expanduser("~/.claude/projects/-home-francis/")
+# The agent runs `claude -p` from the shell's working directory, and Claude Code
+# stores sessions under a slug of that directory (non-alphanumerics -> "-").
+# This script is launched the same way, so its cwd is the same directory.
+base = os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", os.getcwd())) + "/"
+
+
+def is_agent_session(path):
+    """Agent sessions come from `claude -p` (entrypoint "sdk-cli"); interactive
+    Claude Code sessions started in the same directory are left out."""
+    with open(path) as fh:
+        for i, line in enumerate(fh):
+            if i > 50:
+                break
+            if '"entrypoint"' not in line:
+                continue
+            try:
+                return json.loads(line).get("entrypoint") == "sdk-cli"
+            except ValueError:
+                continue
+    return False
+
 
 if action == "list":
     results = []
-    for f in sorted(glob.glob(base + "*.jsonl"), key=os.path.getmtime, reverse=True)[:20]:
+    files = sorted(glob.glob(base + "*.jsonl"), key=os.path.getmtime, reverse=True)
+    for f in [f for f in files if is_agent_session(f)][:20]:
         sid = os.path.basename(f).replace(".jsonl", "")
         mtime = os.path.getmtime(f)
         title = ""

@@ -100,7 +100,8 @@ Singleton {
     }
 
     // --- History (reads from Claude CLI session files) ---
-    readonly property string historyScript: homeDir + "/.config/DankMaterialShell/plugins/dms-agent/history.py"
+    // Resolved next to this file: the plugin directory name depends on how it was installed.
+    readonly property string historyScript: decodeURIComponent(String(Qt.resolvedUrl("history.py")).replace(/^file:\/\//, ""))
 
     function loadHistory() {
         runQuietExit("python3 " + shellQuote(historyScript) + " list", function(output) {
@@ -200,7 +201,44 @@ Singleton {
     }
 
     // --- Claude process ---
+    // Output is read as stream-json, one event per line, so every tool call
+    // shows up in the chat while the agent is still working.
     property var _claudeProcess: null
+    property bool _gotResult: false
+    property string _lastText: ""
+    property var _toolNames: ({})
+
+    Component {
+        id: claudeRunner
+        Process {
+            id: claudeProc
+            property string shellCmd: ""
+            command: ["bash", "-lc", shellCmd]
+            stdout: SplitParser {
+                onRead: data => {
+                    if (root._claudeProcess === claudeProc) root.handleStreamLine(data);
+                }
+            }
+            stderr: StdioCollector {}
+            onExited: {
+                if (root._claudeProcess === claudeProc) exitGrace.restart();
+                // Delayed: stdout lines may still be in flight when the exit arrives.
+                claudeProc.destroy(2000);
+            }
+        }
+    }
+
+    // Process ended without a "result" event (crash, no network, killed from outside).
+    Timer {
+        id: exitGrace
+        interval: 700
+        onTriggered: {
+            if (root._claudeProcess && !root._gotResult) {
+                root._claudeProcess = null;
+                root.finishResponse(root._lastText || "(error: agent exited without a response)");
+            }
+        }
+    }
 
     function cancelRequest() {
         if (_claudeProcess) {
@@ -213,30 +251,81 @@ Singleton {
 
     function callClaude(prompt) {
         statusText = extendedThinking ? "Thinking..." : "Processing...";
+        _gotResult = false;
+        _lastText = "";
+        _toolNames = ({});
 
-        var cmd = "echo " + shellQuote(prompt) + " | claude -p"
+        // exec: bash is replaced by claude, so Cancel's SIGTERM reaches claude itself.
+        var cmd = "exec claude -p"
             + " --model " + shellQuote(claudeModel)
-            + " --output-format json"
+            + " --output-format stream-json --verbose"
             + " --dangerously-skip-permissions"
             + " --append-system-prompt " + shellQuote(systemPrompt)
             + (sessionId ? " --resume " + shellQuote(sessionId) : "")
-            + " 2>/dev/null";
+            + " 2>/dev/null <<< " + shellQuote(prompt);
 
-        _claudeProcess = run(cmd, function(output) {
-            _claudeProcess = null;
-            parseClaudeJson(String(output).trim());
-        });
+        var p = claudeRunner.createObject(root, { shellCmd: cmd });
+        _claudeProcess = p;
+        p.running = true;
     }
 
-    function parseClaudeJson(raw) {
-        var data;
-        try { data = JSON.parse(raw); } catch(e) {
-            finishResponse("(could not parse response)");
-            return;
-        }
+    function handleStreamLine(line) {
+        var ev;
+        try { ev = JSON.parse(line); } catch(e) { return; }
 
+        var content = ev.message && Array.isArray(ev.message.content) ? ev.message.content : [];
+
+        if (ev.type === "assistant") {
+            for (var i = 0; i < content.length; i++) {
+                var block = content[i];
+                if (block.type === "thinking") {
+                    statusText = "Thinking...";
+                } else if (block.type === "tool_use") {
+                    var newNames = Object.assign({}, _toolNames);
+                    newNames[block.id] = block.name;
+                    _toolNames = newNames;
+                    var step = describeTool(block.name, block.input);
+                    addMessage("tool_status", step);
+                    statusText = step;
+                } else if (block.type === "text" && block.text) {
+                    _lastText = block.text;
+                    statusText = "Writing answer...";
+                }
+            }
+        } else if (ev.type === "user") {
+            for (var j = 0; j < content.length; j++) {
+                var res = content[j];
+                if (res.type !== "tool_result") continue;
+                if (res.is_error) {
+                    addMessage("tool_status", "✗ " + (_toolNames[res.tool_use_id] || "tool") + " failed");
+                }
+                statusText = extendedThinking ? "Thinking..." : "Processing...";
+            }
+        } else if (ev.type === "result") {
+            _gotResult = true;
+            _claudeProcess = null;
+            handleResult(ev);
+        }
+    }
+
+    // One line per tool call: name plus the most telling argument.
+    function describeTool(name, input) {
+        var inp = input || {};
+        var arg = inp.command || inp.file_path || inp.path || inp.pattern || inp.url || inp.query || inp.description || "";
+        if (!arg) {
+            try { arg = JSON.stringify(inp); } catch(e) { arg = ""; }
+            if (arg === "{}") arg = "";
+        }
+        arg = String(arg).replace(/\s+/g, " ").trim();
+        if (homeDir) arg = arg.split(homeDir).join("~");
+        if (arg.length > 120) arg = arg.substring(0, 117) + "...";
+        return arg ? name + ": " + arg : name;
+    }
+
+    function handleResult(data) {
         if (data.session_id) sessionId = data.session_id;
 
+        lastCost = "";
         if (data.total_cost_usd !== undefined) {
             lastCost = "$" + data.total_cost_usd.toFixed(4);
         }
@@ -246,11 +335,7 @@ Singleton {
             lastCost += " (" + inp + "→" + out + " tokens)";
         }
 
-        if (data.num_turns && data.num_turns > 1) {
-            addMessage("tool_status", "Executed " + (data.num_turns - 1) + " action(s)");
-        }
-
-        var response = data.result || "";
+        var response = data.result || _lastText || "";
         finishResponse(response || "(done)");
         loadHistory();
     }
