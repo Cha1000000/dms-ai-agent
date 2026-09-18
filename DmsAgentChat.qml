@@ -18,7 +18,6 @@ Item {
         anchors.right: parent.right
         height: inputCol.height
         radius: 20; color: Theme.surfaceContainer
-        border.width: 1; border.color: Theme.outlineVariant
         z: 10
 
         layer.enabled: true
@@ -166,13 +165,18 @@ Item {
         }
     }
 
+    // --- Neon rims (behind the cards they outline) ---
+    NeonBorder { target: inputCard; radius: 20 }
+    NeonBorder { target: modelDropdown; radius: 12; glowOpacity: 0.45 }
+    NeonBorder { target: historyDropdown; radius: 12; glowOpacity: 0.45 }
+
     // --- Model Dropdown (outside input card, z on top) ---
     Rectangle {
         id: modelDropdown; visible: false
         anchors.bottom: inputCard.top; anchors.bottomMargin: 6
         anchors.left: inputCard.left; anchors.leftMargin: 8
         width: 130; height: modelCol.height + 8; radius: 12
-        color: Theme.surfaceContainerHighest; border.width: 1; border.color: Theme.outlineVariant
+        color: Theme.surfaceContainerHighest
         z: 20
 
         Column {
@@ -203,7 +207,7 @@ Item {
         anchors.left: parent.left; anchors.right: parent.right
         anchors.top: parent.top; anchors.topMargin: 8
         radius: 12; clip: true
-        color: Theme.surfaceContainerHighest; border.width: 1; border.color: Theme.outlineVariant
+        color: Theme.surfaceContainerHighest
         z: 20
 
         Text {
