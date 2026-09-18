@@ -1,0 +1,3 @@
+# The fork's README replaces upstream's entirely: keep ours on merges.
+# (needs `git config merge.ours.driver true`, set by scripts/sync-upstream.sh)
+README.md merge=ours

@@ -1,0 +1,44 @@
+name: Sync upstream
+
+# Daily merge of Francisdelca/dms-agent into this fork. Clean merges are
+# pushed to main (installed copies pick them up via DMS "Update"); conflicts
+# open an issue and fail the run, so GitHub e-mails the owner.
+
+on:
+  schedule:
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/sync-upstream.sh --ci
+
+      - name: Close resolved conflict issue
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n="$(gh issue list --state open --search '"Upstream sync: merge conflict" in:title' --json number --jq '.[0].number')"
+          if [ -n "$n" ]; then gh issue close "$n" --comment "Upstream merged cleanly — closing."; fi
