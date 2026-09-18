@@ -44,6 +44,41 @@ Singleton {
     signal messageAdded(var message)
     signal responseComplete()
 
+    // --- Chat panel across monitors ---
+    // One widget instance per bar; only one chat panel is visible at a time.
+    // panelRequested("*") means "any monitor": the first instance to react wins.
+    signal panelRequested(string screenName)
+    signal panelHideRequested()
+    property string visibleScreen: ""
+
+    function setPanelVisible(name, isVisible) {
+        if (isVisible) visibleScreen = name;
+        else if (visibleScreen === name) visibleScreen = "";
+        popoutVisible = visibleScreen !== "";
+    }
+    function showPanelOn(name) {
+        panelRequested(name);
+    }
+
+    // Keybinding entry point: open on the monitor that has focus.
+    IpcHandler {
+        target: "dmsAgent"
+        function toggle(): string {
+            if (root.visibleScreen !== "") {
+                root.panelHideRequested();
+                return "closed";
+            }
+            root.runQuietExit("niri msg -j focused-output 2>/dev/null", function(output) {
+                var name = "";
+                try { name = JSON.parse(String(output)).name || ""; } catch(e) {}
+                if (name) root.showPanelOn(name);
+                // No pill on the focused monitor (or niri unavailable): open anywhere.
+                if (root.visibleScreen === "") root.showPanelOn("*");
+            });
+            return "opened";
+        }
+    }
+
     readonly property string homeDir: Quickshell.env("HOME") || ""
     // Agent sessions live in their own Claude Code project (a slug of this dir),
     // apart from interactive sessions started in $HOME. history.py relies on it

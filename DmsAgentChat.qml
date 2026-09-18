@@ -359,6 +359,12 @@ Item {
         }
     }
 
+    function reloadMessages() {
+        messageModel.clear();
+        loadMessages();
+        inputField.forceActiveFocus();
+    }
+
     Component.onCompleted: { loadMessages(); inputField.forceActiveFocus(); }
 
     Connections {
