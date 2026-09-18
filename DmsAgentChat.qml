@@ -10,6 +10,15 @@ Item {
 
     signal escapePressed()
 
+    // Set by the panel: several instances exist (one per bar), only the shown one takes dictation.
+    property bool active: true
+
+    Timer {
+        interval: 5000
+        running: AgentService.voiceError !== ""
+        onTriggered: AgentService.voiceError = ""
+    }
+
     // --- Input Card (anchored to bottom) ---
     Rectangle {
         id: inputCard
@@ -54,7 +63,9 @@ Item {
                     }
 
                     Keys.onEscapePressed: function(event) {
-                        event.accepted = true; chatRoot.escapePressed();
+                        event.accepted = true;
+                        if (AgentService.voiceState === "recording") AgentService.cancelVoice();
+                        else chatRoot.escapePressed();
                     }
                 }
             }
@@ -149,6 +160,62 @@ Item {
                             color: cancelArea.containsMouse ? Theme.withAlpha(Theme.error || "#EF4444", 0.15) : "transparent"
                             DankIcon { anchors.centerIn: parent; name: "close"; color: Theme.surfaceVariantText; size: 14 }
                             MouseArea { id: cancelArea; anchors.fill: parent; hoverEnabled: true; onClicked: AgentService.cancelRequest() }
+                        }
+                    }
+
+                    // Voice input: error, recording timer, mic button
+                    Text {
+                        visible: AgentService.voiceError !== "" && !AgentService.busy
+                        text: AgentService.voiceError
+                        color: Theme.error || "#EF4444"; font.pixelSize: 10
+                        elide: Text.ElideRight; Layout.maximumWidth: 240
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Text {
+                        visible: AgentService.voiceState === "recording"
+                        text: Math.floor(AgentService.voiceSeconds / 60) + ":" + ("0" + AgentService.voiceSeconds % 60).slice(-2)
+                        color: "#EF4444"; font.pixelSize: 11; font.family: "monospace"
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Rectangle {
+                        id: micButton
+                        visible: !AgentService.busy
+                        width: 32; height: 32; radius: 16
+                        Layout.alignment: Qt.AlignVCenter
+                        readonly property bool recording: AgentService.voiceState === "recording"
+                        readonly property bool transcribing: AgentService.voiceState === "transcribing"
+                        color: recording ? Theme.withAlpha("#EF4444", 0.18)
+                            : (micArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
+
+                        DankIcon {
+                            id: micIcon
+                            anchors.centerIn: parent
+                            name: micButton.transcribing ? "progress_activity" : (micButton.recording ? "stop" : "mic")
+                            color: micButton.recording ? "#EF4444" : Theme.surfaceVariantText
+                            size: 18
+                            RotationAnimation on rotation {
+                                running: micButton.transcribing; loops: Animation.Infinite
+                                from: 0; to: 360; duration: 900
+                                onRunningChanged: if (!running) micIcon.rotation = 0
+                            }
+                        }
+
+                        SequentialAnimation on opacity {
+                            running: micButton.recording; loops: Animation.Infinite
+                            NumberAnimation { to: 0.55; duration: 700; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
+                            onRunningChanged: if (!running) micButton.opacity = 1
+                        }
+
+                        MouseArea {
+                            id: micArea; anchors.fill: parent; hoverEnabled: true
+                            enabled: !micButton.transcribing
+                            onClicked: {
+                                if (micButton.recording) AgentService.stopVoice();
+                                else AgentService.startVoice();
+                            }
                         }
                     }
 
@@ -373,6 +440,15 @@ Item {
 
     Connections {
         target: AgentService
+
+        function onVoiceTextReady(text) {
+            if (!chatRoot.active) return;
+            var pos = inputField.cursorPosition;
+            var before = inputField.text.substring(0, pos);
+            var sep = before.length > 0 && !/\s$/.test(before) ? " " : "";
+            inputField.insert(pos, sep + text);
+            inputField.forceActiveFocus();
+        }
 
         function onMessageAdded(message) {
             if (message.role === "tool" || message.role === "tool_result") return;

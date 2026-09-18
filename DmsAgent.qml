@@ -65,6 +65,8 @@ PluginComponent {
             animScale = 1.0; animOpacity = 1.0;
         }
         function hide() {
+            // Closing the chat mid-dictation drops the recording.
+            if (AgentService.voiceState === "recording") AgentService.cancelVoice();
             isVisible = false; AgentService.setPanelVisible(root.screenName, false);
             animScale = 0.92; animOpacity = 0.0;
         }
@@ -101,6 +103,7 @@ PluginComponent {
 
             DmsAgentChat {
                 id: agentChat
+                active: agentPanel.isVisible
                 anchors.fill: parent
                 onEscapePressed: agentPanel.hide()
             }

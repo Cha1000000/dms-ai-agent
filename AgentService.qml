@@ -44,6 +44,87 @@ Singleton {
     signal messageAdded(var message)
     signal responseComplete()
 
+    // --- Voice input ---
+    // pw-record writes a 16 kHz mono WAV; voice.py sends it to a local
+    // faster-whisper server that keeps the model loaded between phrases.
+    // Stop uses SIGTERM: on SIGINT pw-record leaves a header-only file.
+    property string voiceState: "idle"    // idle | recording | transcribing
+    property int voiceSeconds: 0
+    property string voiceError: ""
+    signal voiceTextReady(string text)
+
+    readonly property string voiceScript: decodeURIComponent(String(Qt.resolvedUrl("voice.py")).replace(/^file:\/\//, ""))
+    readonly property string voiceWav: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/dms-agent-voice.wav"
+    readonly property int voiceMaxSeconds: 120
+    property var _recProcess: null
+    property bool _recCancelled: false
+
+    Component {
+        id: recRunner
+        Process {
+            id: recProc
+            command: ["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16", root.voiceWav]
+            stderr: StdioCollector {}
+            onExited: {
+                if (root._recProcess === recProc) root._onRecordingExited();
+                recProc.destroy();
+            }
+        }
+    }
+
+    Timer {
+        id: voiceTicker
+        interval: 1000; repeat: true
+        running: root.voiceState === "recording"
+        onTriggered: {
+            root.voiceSeconds += 1;
+            if (root.voiceSeconds >= root.voiceMaxSeconds) root.stopVoice();
+        }
+    }
+
+    function startVoice() {
+        if (busy || voiceState !== "idle") return;
+        voiceError = "";
+        voiceSeconds = 0;
+        _recCancelled = false;
+        var p = recRunner.createObject(root);
+        _recProcess = p;
+        p.running = true;
+        voiceState = "recording";
+    }
+
+    function stopVoice() {
+        if (voiceState !== "recording" || !_recProcess) return;
+        voiceState = "transcribing";
+        _recProcess.signal(15);
+    }
+
+    function cancelVoice() {
+        if (voiceState !== "recording" || !_recProcess) return;
+        _recCancelled = true;
+        _recProcess.signal(15);
+    }
+
+    function _onRecordingExited() {
+        _recProcess = null;
+        if (_recCancelled || voiceState === "recording") {
+            // Cancelled, or pw-record died on its own (no microphone, PipeWire down).
+            if (!_recCancelled) voiceError = "Микрофон недоступен";
+            voiceState = "idle";
+            runQuietExit("rm -f " + shellQuote(voiceWav), function() {});
+            return;
+        }
+        runQuietExit("python3 " + shellQuote(voiceScript) + " transcribe " + shellQuote(voiceWav)
+                + "; rm -f " + shellQuote(voiceWav), function(output) {
+            var result = {};
+            try { result = JSON.parse(String(output).trim()); } catch(e) { result = { error: "нет ответа от распознавания" }; }
+            if (result.error) voiceError = result.error;
+            else if (!result.text) voiceError = "Речь не распознана";
+            else voiceTextReady(result.text);
+            voiceState = "idle";
+        });
+    }
+
     // --- Chat panel across monitors ---
     // One widget instance per bar; only one chat panel is visible at a time.
     // panelRequested("*") means "any monitor": the first instance to react wins.
