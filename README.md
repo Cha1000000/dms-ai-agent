@@ -1,79 +1,154 @@
-# DMS Agent
+<p align="center">
+  <img src="assets/banner.png" alt="DMS AI Agent — Claude Code in your DankMaterialShell bar" width="100%">
+</p>
 
-AI desktop assistant plugin for [DankMaterialShell](https://danklinux.com) powered by [Claude Code](https://claude.ai/claude-code).
+<p align="center">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-4F7BFF"></a>
+  <img alt="niri" src="https://img.shields.io/badge/compositor-niri-9B5CFF">
+  <img alt="DMS" src="https://img.shields.io/badge/DankMaterialShell-%E2%89%A51.4-3EE0FF">
+  <a href="https://github.com/Francisdelca/dms-agent"><img alt="fork of dms-agent" src="https://img.shields.io/badge/fork%20of-Francisdelca%2Fdms--agent-E14BFF"></a>
+</p>
 
-![DMS Agent Overview](screenshots/overview.png)
+**DMS AI Agent** is a desktop assistant for [DankMaterialShell](https://danklinux.com) powered by
+[Claude Code](https://docs.claude.com/en/docs/claude-code). Click the pill in your bar (or hit a
+hotkey), type or say what you need — "open Telegram on workspace 2", "how much disk space is left",
+"find the PDFs I downloaded today" — and watch the agent do it, step by step.
 
-A floating, transparent chat panel that lets you control your desktop with natural language. Ask it to open apps, switch windows, play music, search the web, manage files, and more — all without leaving your current context.
+It is a fork of [Francisdelca/dms-agent](https://github.com/Francisdelca/dms-agent) that fixes a few
+bugs and adds the things that were missing for daily use. The fork merges the original every day,
+so improvements made there arrive here too.
 
-![DMS Agent Panel](screenshots/panel.png)
+## What's different from the original
 
-## Features
+| | Original | This fork |
+|---|---|---|
+| While the agent works | only "Processing..." | every tool call appears in the chat as it happens |
+| Cancel | hid the request, Claude kept running in the background | really stops the agent |
+| History | always empty (path hardcoded to the author's home) | lists and resumes your agent chats |
+| Monitors | chat always opened on the first monitor | a pill on every bar, chat opens where you clicked |
+| Hotkey | manual edit of the niri config | set in plugin settings, opens on the focused monitor |
+| Voice | — | mic button, local Whisper (GPU or CPU), nothing leaves your machine |
+| Look | grey border | neon gradient rim, custom icon and label |
+| Sessions | mixed with your other Claude Code sessions in `$HOME` | kept in their own project dir |
 
-- **Claude Code integration** — Full access to Bash, Read, Write, Edit and all Claude Code tools
-- **Session persistence** — Conversations persist across panel open/close via Claude CLI sessions
-- **History** — Browse and resume previous conversations from Claude Code session history
-- **Intent detection** — Common actions (go-to, open, close) pre-fetch context for faster responses
-- **Model selector** — Switch between Haiku (fast), Sonnet (balanced), and Opus (best)
-- **Extended thinking** — Toggle deep reasoning mode for complex tasks
-- **Cost tracking** — See API costs and token usage per response
-- **Cancel** — Stop any in-progress request
-- **Floating panel** — Transparent overlay at bottom-center, keyboard-togglable
-- **Theme-aware** — Adapts to your DMS theme colors automatically
-- **Markdown rendering** — Responses render bold, italic, code, links, and lists
-- **Desktop actions** — Niri window management, Spotify control via spogo, app launching with process detachment
+<p align="center">
+  <img src="assets/screenshot-progress.png" alt="Agent running a tool" width="49%">
+  <img src="assets/screenshot-answer.png" alt="Agent answer" width="49%">
+</p>
 
 ## Requirements
 
-- [DankMaterialShell](https://danklinux.com) >= 1.4.0
-- [Claude Code CLI](https://claude.ai/claude-code) (`claude` command in PATH)
-- `bash`, `curl`, `xdg-open`, `notify-send`
-- niri compositor (for window management commands)
+- [DankMaterialShell](https://danklinux.com) ≥ 1.4 on **niri** (the chat itself also works on other
+  compositors; the hotkey helper and "open on the focused monitor" need niri)
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI, logged in (`claude` in `PATH`)
+- `git`, `python3`, `notify-send`
+- Voice input: PipeWire (`pw-record`) and ~0.5–2 GB of disk for the Whisper model;
+  an NVIDIA GPU makes it near-instant but is not required
 
-## Installation
-
-Install from the DMS Plugin Browser, or manually:
+## Install
 
 ```bash
-cd ~/.config/DankMaterialShell/plugins/
-git clone https://github.com/Francisdelca/dms-agent.git
+curl -fsSL https://raw.githubusercontent.com/Cha1000000/dms-ai-agent/main/install.sh | bash
 ```
 
-Reload DMS to activate.
+or from a checkout:
 
-## Usage
+```bash
+git clone https://github.com/Cha1000000/dms-ai-agent
+cd dms-ai-agent && ./install.sh
+```
 
-- **Super+A** — Toggle the agent panel (requires keybinding setup)
-- **Click the pill** in the bar to open/close
-- **Escape** — Close the panel
-- Type a message and press **Enter** to send
+The installer puts the plugin into `~/.config/DankMaterialShell/plugins/dmsAgent` (an existing copy
+of the original plugin is moved aside, not deleted), creates a Python venv for voice input with the
+CUDA libraries when an NVIDIA GPU is present, downloads the Whisper model, sets the hotkey and
+restarts DMS. It tells you exactly which package to install if something is missing, and is safe to
+run again to update.
 
-### Keybinding Setup
+| Option | Meaning |
+|---|---|
+| `--hotkey KEY` | chat hotkey, default `Mod+Space`; `none` to skip |
+| `--no-voice` | skip the voice input setup |
+| `--voice-venv PATH` | reuse an existing venv that already has `faster-whisper` |
+| `--no-model` | don't pre-download the Whisper model (it downloads on first use) |
 
-Add to your niri binds config (`~/.config/niri/dms/binds.kdl`):
+Then, in DMS:
+
+1. **Settings → Plugins** → enable **DMS AI Agent**
+2. **Settings → Bar** → add the **DMS AI Agent** widget to each bar where you want the pill
+
+## Settings
+
+**Settings → Plugins → DMS AI Agent**
+
+| Setting | Default | |
+|---|---|---|
+| Model | `haiku` | `haiku` (fast), `sonnet`, `opus` |
+| Extended Thinking | off | deeper reasoning, slower |
+| System Prompt | built-in | your own instructions for the agent |
+| Pill Label | `Jarvis` | text next to the icon in the bar |
+| Chat Hotkey (niri) | `Mod+Space` | any niri key combo; empty removes it |
+| Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
+| Language | `auto` | or a fixed code (`en`, `ru`, `de`, …) — more accurate for short phrases |
+| Whisper venv | installer's | path to a venv with `faster-whisper` |
+
+### Hotkey
+
+niri binds live in the compositor config, so the plugin keeps its one binding in
+`~/.config/niri/dms-ai-agent.kdl`, included at the very end of `config.kdl`:
 
 ```kdl
-Mod+A hotkey-overlay-title="DMS Agent" { spawn "dms" "ipc" "call" "dmsAgent" "toggle"; }
+include optional=true "dms-ai-agent.kdl"
 ```
 
-### Examples
+Later binds override earlier ones with the same key, so the agent wins over a DMS default on that
+key. A new value from the settings is checked with `niri validate` before it replaces the file —
+a typo never breaks your running config. On other compositors, bind
+`dms ipc call dmsAgent toggle` yourself.
 
-- `abre spotify` — Launches Spotify
-- `llévame a whatsapp` — Focuses the WhatsApp window
-- `cierra brave` — Closes the Brave browser
-- `pon jazz en spotify` — Plays jazz via spogo
-- `busca archivos pdf en descargas` — Searches files
-- `cuánto espacio tengo en disco?` — System info
+### Voice input
 
-## Configuration
+Click the mic, speak, click again: the text is inserted at the cursor so you can fix it before
+sending. `Esc` cancels. Recording is capped at 2 minutes.
 
-Access settings through the DMS plugin settings panel:
+Speech is recognized locally by [faster-whisper](https://github.com/SYSTRAN/faster-whisper). The
+model is loaded by a small background server on first use and unloaded after 10 idle minutes, so
+the first phrase takes a couple of seconds and the next ones are near-instant. Logs:
+`$XDG_RUNTIME_DIR/dms-agent-voice.log`.
 
-- **Model** — Claude model (haiku/sonnet/opus)
-- **Extended Thinking** — Toggle deep reasoning
-- **Max Tokens** — Response length limit
-- **System Prompt** — Custom instructions
+## Updating
 
-## License
+Use **Update** in DMS (Settings → Plugins) or re-run `install.sh`. DMS updates plugins with
+`git pull`, and this repository only ever moves forward, so updates are plain fast-forwards.
 
-MIT
+### Upstream sync
+
+A [workflow](.github/workflows/sync-upstream.yml) merges
+[Francisdelca/dms-agent](https://github.com/Francisdelca/dms-agent) into `main` every day:
+
+- **clean merge** → pushed right away, you get it with the next DMS update;
+- **conflict** → nothing is pushed; an issue titled *Upstream sync: merge conflict* lists the files
+  and the new upstream commits. Resolve it locally with
+  [`scripts/sync-upstream.sh`](scripts/sync-upstream.sh), which leaves the conflict in your working
+  tree. Rule of thumb: when upstream now contains the same fix, take theirs; keep ours for
+  fork-only features. `git rerere` is enabled, so a resolution is reused if the same hunk
+  conflicts again.
+
+Merges, not rebases, are deliberate: a rewritten history would make every installed copy fall back
+to deleting and re-cloning the plugin.
+
+## Good to know
+
+- The agent runs Claude Code with `--dangerously-skip-permissions`: it executes commands **without
+  asking**. That is what makes "open X, move it to workspace 2" instant — keep it in mind.
+- Agent sessions live in their own Claude Code project (working dir
+  `~/.local/state/dms-agent`), separate from sessions you start in your home directory.
+- The chat panel is shown on one monitor at a time; the hotkey toggles it on the focused one.
+
+## Credits
+
+Original plugin by **[Francis](https://github.com/Francisdelca)** —
+[Francisdelca/dms-agent](https://github.com/Francisdelca/dms-agent). This fork is maintained by
+[Vladimir Mileshko](https://github.com/Cha1000000). Much of the fork was written together with
+Claude Code.
+
+[MIT](LICENSE)
