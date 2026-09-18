@@ -8,7 +8,12 @@ Loading the model takes seconds, so it is kept in a small background server
 that listens on a UNIX socket and exits on its own after IDLE_SECONDS without
 requests. `transcribe` is the client: it starts the server when it is not
 running and waits until the model is loaded. The client needs only the
-standard library; the server runs in the whisper venv.
+standard library; the server runs in the whisper venv (install.sh creates it).
+
+Configuration comes from the plugin settings via environment variables:
+    DMS_AGENT_WHISPER_VENV    venv with faster-whisper
+    DMS_AGENT_WHISPER_MODEL   "auto" (GPU: large-v3-turbo, CPU: small) or a model name
+    DMS_AGENT_WHISPER_LANG    "auto" or a language code such as "en", "ru"
 """
 
 import fcntl
@@ -19,9 +24,13 @@ import subprocess
 import sys
 import time
 
-VENV = os.environ.get("DMS_AGENT_WHISPER_VENV", os.path.expanduser("~/mcp-servers/whisper-local/.venv"))
-MODEL = os.environ.get("DMS_AGENT_WHISPER_MODEL", "large-v3-turbo")
-LANGUAGE = os.environ.get("DMS_AGENT_WHISPER_LANG", "ru")
+DEFAULT_VENV = "~/.local/share/dms-ai-agent/whisper-venv"
+VENV = os.path.expanduser(os.environ.get("DMS_AGENT_WHISPER_VENV") or DEFAULT_VENV)
+MODEL = os.environ.get("DMS_AGENT_WHISPER_MODEL") or "auto"
+LANGUAGE = os.environ.get("DMS_AGENT_WHISPER_LANG") or "auto"
+# Model picked for "auto": the large one is only fast enough on a GPU.
+AUTO_GPU_MODEL = "large-v3-turbo"
+AUTO_CPU_MODEL = "small"
 IDLE_SECONDS = int(os.environ.get("DMS_AGENT_WHISPER_IDLE", "600"))
 STARTUP_TIMEOUT = 90
 
@@ -51,17 +60,21 @@ def cuda_env():
 
 # --- server -------------------------------------------------------------------
 
-def load_model():
+def load_model(spec):
     from faster_whisper import WhisperModel
     try:
-        return WhisperModel(MODEL, device="cuda", compute_type="float16")
+        name = AUTO_GPU_MODEL if spec == "auto" else spec
+        return WhisperModel(name, device="cuda", compute_type="float16"), name
     except Exception as error:  # no GPU / CUDA libs: slower, but still works
         print(f"CUDA unavailable ({error}), falling back to CPU", file=sys.stderr, flush=True)
-        return WhisperModel(MODEL, device="cpu", compute_type="int8")
+        name = AUTO_CPU_MODEL if spec == "auto" else spec
+        return WhisperModel(name, device="cpu", compute_type="int8"), name
 
 
 def serve():
-    model = load_model()
+    # MODEL is the setting this server was started with ("auto" or a name):
+    # a request with another setting makes it step aside for a new server.
+    model, loaded = load_model(MODEL)
 
     if os.path.exists(SOCKET_PATH):
         os.unlink(SOCKET_PATH)
@@ -69,7 +82,7 @@ def serve():
     server.bind(SOCKET_PATH)
     server.listen(4)
     server.settimeout(IDLE_SECONDS)
-    print(f"ready: {MODEL}", file=sys.stderr, flush=True)
+    print(f"ready: {loaded} (setting: {MODEL})", file=sys.stderr, flush=True)
 
     try:
         while True:
@@ -80,21 +93,29 @@ def serve():
                 return
             with conn:
                 conn.settimeout(10)
-                path = conn.makefile("r", encoding="utf-8").readline().strip()
-                conn.sendall((json.dumps(transcribe_file(model, path), ensure_ascii=False) + "\n").encode("utf-8"))
+                try:
+                    request = json.loads(conn.makefile("r", encoding="utf-8").readline())
+                except ValueError:
+                    request = {}
+                if request.get("model", MODEL) != MODEL:
+                    conn.sendall(b'{"restart": true}\n')
+                    print("model setting changed, exiting", file=sys.stderr, flush=True)
+                    return
+                result = transcribe_file(model, request.get("path", ""), request.get("language", "auto"))
+                conn.sendall((json.dumps(result, ensure_ascii=False) + "\n").encode("utf-8"))
     finally:
         server.close()
         if os.path.exists(SOCKET_PATH):
             os.unlink(SOCKET_PATH)
 
 
-def transcribe_file(model, path):
+def transcribe_file(model, path, language):
     if not path or not os.path.isfile(path):
         return {"error": f"no audio file: {path}"}
     try:
         segments, _ = model.transcribe(
             path,
-            language=LANGUAGE,
+            language=None if language in ("", "auto") else language,
             vad_filter=True,
             beam_size=5,
             condition_on_previous_text=False,
@@ -107,18 +128,26 @@ def transcribe_file(model, path):
 
 # --- client -------------------------------------------------------------------
 
+class ServerRestarting(Exception):
+    """The running server was started with another model setting and quit."""
+
+
 def ask_server(path, timeout):
+    request = {"path": path, "model": MODEL, "language": LANGUAGE}
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
         conn.settimeout(timeout)
         conn.connect(SOCKET_PATH)
-        conn.sendall((path + "\n").encode("utf-8"))
-        return json.loads(conn.makefile("r", encoding="utf-8").readline())
+        conn.sendall((json.dumps(request) + "\n").encode("utf-8"))
+        reply = json.loads(conn.makefile("r", encoding="utf-8").readline())
+    if reply.get("restart"):
+        raise ServerRestarting()
+    return reply
 
 
 def start_server():
     python = os.path.join(VENV, "bin", "python")
     if not os.path.exists(python):
-        raise RuntimeError(f"whisper venv not found: {VENV}")
+        raise RuntimeError(f"whisper venv not found: {VENV} (run install.sh or set the path in plugin settings)")
     log = open(LOG_PATH, "a")
     subprocess.Popen(
         [python, os.path.abspath(__file__), "serve"],
@@ -133,6 +162,12 @@ def transcribe(path):
         return ask_server(path, timeout=120)
     except (FileNotFoundError, ConnectionRefusedError):
         pass
+    except ServerRestarting:
+        # Old server is on its way out; give it a moment to remove the socket.
+        for _ in range(20):
+            if not os.path.exists(SOCKET_PATH):
+                break
+            time.sleep(0.1)
 
     # Server is not running. The lock keeps two clicks from starting two servers.
     os.makedirs(RUNTIME, exist_ok=True)
@@ -140,7 +175,7 @@ def transcribe(path):
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
             return ask_server(path, timeout=120)
-        except (FileNotFoundError, ConnectionRefusedError):
+        except (FileNotFoundError, ConnectionRefusedError, ServerRestarting):
             pass
         start_server()
         deadline = time.time() + STARTUP_TIMEOUT

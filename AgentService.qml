@@ -33,6 +33,13 @@ Singleton {
         "Your working directory is a private state dir, not the user's home. " +
         "For user files always use ~ or absolute paths."
 
+    // Set from the plugin settings (DmsAgent.qml).
+    property int maxTokens: 1024
+    property string pillLabel: "Jarvis"
+    property string voiceModel: "auto"
+    property string voiceLanguage: "auto"
+    property string voiceVenv: ""
+
     property bool busy: false
     property string statusText: "Ready"
     property var messages: []
@@ -54,6 +61,7 @@ Singleton {
     signal voiceTextReady(string text)
 
     readonly property string voiceScript: decodeURIComponent(String(Qt.resolvedUrl("voice.py")).replace(/^file:\/\//, ""))
+    readonly property string keybindScript: decodeURIComponent(String(Qt.resolvedUrl("keybind.sh")).replace(/^file:\/\//, ""))
     readonly property string voiceWav: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/dms-agent-voice.wav"
     readonly property int voiceMaxSeconds: 120
     property var _recProcess: null
@@ -109,19 +117,38 @@ Singleton {
         _recProcess = null;
         if (_recCancelled || voiceState === "recording") {
             // Cancelled, or pw-record died on its own (no microphone, PipeWire down).
-            if (!_recCancelled) voiceError = "Микрофон недоступен";
+            if (!_recCancelled) voiceError = "Microphone unavailable";
             voiceState = "idle";
             runQuietExit("rm -f " + shellQuote(voiceWav), function() {});
             return;
         }
-        runQuietExit("python3 " + shellQuote(voiceScript) + " transcribe " + shellQuote(voiceWav)
+        var env = "DMS_AGENT_WHISPER_MODEL=" + shellQuote(voiceModel)
+            + " DMS_AGENT_WHISPER_LANG=" + shellQuote(voiceLanguage)
+            + " DMS_AGENT_WHISPER_VENV=" + shellQuote(voiceVenv) + " ";
+        runQuietExit(env + "python3 " + shellQuote(voiceScript) + " transcribe " + shellQuote(voiceWav)
                 + "; rm -f " + shellQuote(voiceWav), function(output) {
             var result = {};
-            try { result = JSON.parse(String(output).trim()); } catch(e) { result = { error: "нет ответа от распознавания" }; }
+            try { result = JSON.parse(String(output).trim()); } catch(e) { result = { error: "No response from speech recognition" }; }
             if (result.error) voiceError = result.error;
-            else if (!result.text) voiceError = "Речь не распознана";
+            else if (!result.text) voiceError = "No speech recognized";
             else voiceTextReady(result.text);
             voiceState = "idle";
+        });
+    }
+
+    // --- Hotkey ---
+    // niri binds live in the compositor config, so the setting is written to a
+    // small include file by keybind.sh. Applied only when the setting was
+    // actually set, otherwise the file install.sh created is left alone.
+    property var _appliedHotkey: null
+
+    function applyHotkey(key) {
+        if (key === _appliedHotkey) return;
+        _appliedHotkey = key;
+        run(shellQuote(keybindScript) + " " + shellQuote(key) + " 2>&1", function(output) {
+            var text = String(output).trim();
+            if (text !== "" && !/^hotkey:/m.test(text))
+                runQuietExit("notify-send -a 'DMS AI Agent' 'Hotkey not applied' " + shellQuote(text.substring(0, 200)), function() {});
         });
     }
 

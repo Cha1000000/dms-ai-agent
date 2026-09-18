@@ -13,7 +13,7 @@ PluginSettings {
         spacing: Theme.spacingM
 
         StyledText {
-            text: "DMS Agent Settings"
+            text: "DMS AI Agent Settings"
             font.pixelSize: Theme.fontSizeLarge
             font.weight: Font.Bold
             color: Theme.surfaceText
@@ -74,6 +74,94 @@ PluginSettings {
                     label: "System Prompt"
                     description: "Custom instructions (leave empty for default)"
                     placeholder: "You are a helpful desktop assistant..."
+                    defaultValue: ""
+                }
+            }
+        }
+
+        StyledRect {
+            Layout.fillWidth: true
+            height: shellCol.implicitHeight + Theme.spacingL * 2
+            radius: Theme.cornerRadius
+            color: Theme.surfaceContainerHigh
+
+            ColumnLayout {
+                id: shellCol
+                anchors.fill: parent
+                anchors.margins: Theme.spacingL
+                spacing: Theme.spacingM
+
+                StyledText {
+                    text: "Bar & Hotkey"
+                    font.pixelSize: Theme.fontSizeMedium
+                    font.weight: Font.Bold
+                    color: Theme.surfaceText
+                }
+
+                StringSetting {
+                    settingKey: "pillLabel"
+                    label: "Pill Label"
+                    description: "Text next to the icon in the bar"
+                    placeholder: "Jarvis"
+                    defaultValue: "Jarvis"
+                }
+
+                StringSetting {
+                    settingKey: "hotkey"
+                    label: "Chat Hotkey (niri)"
+                    description: "Toggles the chat on the focused monitor, e.g. Mod+Space or Mod+Shift+A. Empty removes it. Written to ~/.config/niri/dms-ai-agent.kdl"
+                    placeholder: "Mod+Space"
+                    defaultValue: "Mod+Space"
+                }
+            }
+        }
+
+        StyledRect {
+            Layout.fillWidth: true
+            height: voiceCol.implicitHeight + Theme.spacingL * 2
+            radius: Theme.cornerRadius
+            color: Theme.surfaceContainerHigh
+
+            ColumnLayout {
+                id: voiceCol
+                anchors.fill: parent
+                anchors.margins: Theme.spacingL
+                spacing: Theme.spacingM
+
+                StyledText {
+                    text: "Voice Input"
+                    font.pixelSize: Theme.fontSizeMedium
+                    font.weight: Font.Bold
+                    color: Theme.surfaceText
+                }
+
+                SelectionSetting {
+                    settingKey: "voiceModel"
+                    label: "Whisper Model"
+                    description: "Auto: large-v3-turbo with an NVIDIA GPU, small on CPU. Downloaded on first use."
+                    defaultValue: "auto"
+                    options: [
+                        { label: "Auto", value: "auto" },
+                        { label: "large-v3-turbo (GPU)", value: "large-v3-turbo" },
+                        { label: "medium", value: "medium" },
+                        { label: "small", value: "small" },
+                        { label: "base (fastest)", value: "base" }
+                    ]
+                }
+
+                StringSetting {
+                    settingKey: "voiceLanguage"
+                    label: "Language"
+                    description: "auto, or a code such as en, ru, de. A fixed language is more accurate for short phrases."
+                    placeholder: "auto"
+                    defaultValue: "auto"
+                }
+
+                StringSetting {
+                    settingKey: "voiceVenv"
+                    label: "Whisper venv"
+                    description: "Python venv with faster-whisper (install.sh creates the default one)"
+                    placeholder: "~/.local/share/dms-ai-agent/whisper-venv"
                     defaultValue: ""
                 }
             }

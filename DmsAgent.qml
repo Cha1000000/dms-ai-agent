@@ -50,6 +50,11 @@ PluginComponent {
         AgentService.maxTokens = parseInt(pluginData.maxTokens) || 1024;
         AgentService.extendedThinking = pluginData.extendedThinking === true;
         if (pluginData.systemPrompt) AgentService.systemPrompt = pluginData.systemPrompt;
+        AgentService.pillLabel = pluginData.pillLabel || "Jarvis";
+        AgentService.voiceModel = pluginData.voiceModel || "auto";
+        AgentService.voiceLanguage = pluginData.voiceLanguage || "auto";
+        AgentService.voiceVenv = pluginData.voiceVenv || "";
+        if (pluginData.hotkey !== undefined) AgentService.applyHotkey(pluginData.hotkey);
     }
 
     PanelWindow {
@@ -138,7 +143,7 @@ PluginComponent {
             }
             StyledText {
                 anchors.verticalCenter: parent.verticalCenter
-                text: AgentService.busy ? "Working..." : "Jarvis"
+                text: AgentService.busy ? "Working..." : AgentService.pillLabel
                 color: Theme.surfaceText; font.pixelSize: Theme.fontSizeSmall
             }
         }
