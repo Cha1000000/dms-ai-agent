@@ -29,7 +29,9 @@ Singleton {
         "Match fuzzy — 'brave' matches 'brave-browser-nightly', 'whatsapp' matches 'WhatsApp Web — Mozilla Firefox'.\n\n" +
         "IMPORTANT: When launching applications or running long-lived processes, ALWAYS detach them from the shell. " +
         "Use: setsid <command> >/dev/null 2>&1 & disown\n" +
-        "NEVER run GUI apps in the foreground — always background and detach them."
+        "NEVER run GUI apps in the foreground — always background and detach them.\n\n" +
+        "Your working directory is a private state dir, not the user's home. " +
+        "For user files always use ~ or absolute paths."
 
     property bool busy: false
     property string statusText: "Ready"
@@ -43,6 +45,11 @@ Singleton {
     signal responseComplete()
 
     readonly property string homeDir: Quickshell.env("HOME") || ""
+    // Agent sessions live in their own Claude Code project (a slug of this dir),
+    // apart from interactive sessions started in $HOME. history.py relies on it
+    // too, so both are launched from here.
+    readonly property string workDir: homeDir + "/.local/state/dms-agent"
+    readonly property string cdWorkDir: "mkdir -p " + shellQuote(workDir) + " && cd " + shellQuote(workDir) + " && "
 
     Component.onCompleted: { loadHistory(); }
 
@@ -104,7 +111,7 @@ Singleton {
     readonly property string historyScript: decodeURIComponent(String(Qt.resolvedUrl("history.py")).replace(/^file:\/\//, ""))
 
     function loadHistory() {
-        runQuietExit("python3 " + shellQuote(historyScript) + " list", function(output) {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " list", function(output) {
             try { history = JSON.parse(String(output).trim()); } catch(e) { history = []; }
         });
     }
@@ -116,7 +123,7 @@ Singleton {
         busy = true;
         statusText = "Loading session...";
 
-        runQuietExit("python3 " + shellQuote(historyScript) + " restore " + shellQuote(historySessionId), function(output) {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " restore " + shellQuote(historySessionId), function(output) {
             var loaded = [];
             try { loaded = JSON.parse(String(output).trim()); } catch(e) {}
             for (var i = 0; i < loaded.length; i++) {
@@ -256,7 +263,7 @@ Singleton {
         _toolNames = ({});
 
         // exec: bash is replaced by claude, so Cancel's SIGTERM reaches claude itself.
-        var cmd = "exec claude -p"
+        var cmd = cdWorkDir + "exec claude -p"
             + " --model " + shellQuote(claudeModel)
             + " --output-format stream-json --verbose"
             + " --dangerously-skip-permissions"
