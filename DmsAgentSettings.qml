@@ -8,7 +8,9 @@ PluginSettings {
     id: root
     pluginId: "dmsAgent"
 
-    ColumnLayout {
+    // Plain Columns, not ColumnLayout: DMS setting widgets size themselves with
+    // width: parent.width, which a Layout overrides with their tiny implicit width.
+    Column {
         width: parent.width
         spacing: Theme.spacingM
 
@@ -20,15 +22,16 @@ PluginSettings {
         }
 
         StyledRect {
-            Layout.fillWidth: true
+            width: parent.width
             height: settingsCol.implicitHeight + Theme.spacingL * 2
             radius: Theme.cornerRadius
             color: Theme.surfaceContainerHigh
 
-            ColumnLayout {
+            Column {
                 id: settingsCol
-                anchors.fill: parent
-                anchors.margins: Theme.spacingL
+                x: Theme.spacingL
+                y: Theme.spacingL
+                width: parent.width - Theme.spacingL * 2
                 spacing: Theme.spacingM
 
                 StyledText {
@@ -66,7 +69,7 @@ PluginSettings {
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Bold
                     color: Theme.surfaceText
-                    Layout.topMargin: Theme.spacingS
+                    topPadding: Theme.spacingS
                 }
 
                 StringSetting {
@@ -80,15 +83,16 @@ PluginSettings {
         }
 
         StyledRect {
-            Layout.fillWidth: true
+            width: parent.width
             height: shellCol.implicitHeight + Theme.spacingL * 2
             radius: Theme.cornerRadius
             color: Theme.surfaceContainerHigh
 
-            ColumnLayout {
+            Column {
                 id: shellCol
-                anchors.fill: parent
-                anchors.margins: Theme.spacingL
+                x: Theme.spacingL
+                y: Theme.spacingL
+                width: parent.width - Theme.spacingL * 2
                 spacing: Theme.spacingM
 
                 StyledText {
@@ -117,15 +121,16 @@ PluginSettings {
         }
 
         StyledRect {
-            Layout.fillWidth: true
+            width: parent.width
             height: voiceCol.implicitHeight + Theme.spacingL * 2
             radius: Theme.cornerRadius
             color: Theme.surfaceContainerHigh
 
-            ColumnLayout {
+            Column {
                 id: voiceCol
-                anchors.fill: parent
-                anchors.margins: Theme.spacingL
+                x: Theme.spacingL
+                y: Theme.spacingL
+                width: parent.width - Theme.spacingL * 2
                 spacing: Theme.spacingM
 
                 StyledText {
