@@ -109,20 +109,28 @@ if [ "$WITH_VOICE" = 1 ]; then
         if have uv; then uv pip install --quiet --python "$VENV/bin/python" "$@"
         else "$VENV/bin/python" -m pip install --quiet --upgrade "$@"; fi
     }
-    pip_install faster-whisper || fail "could not install faster-whisper into $VENV"
-    ok "faster-whisper installed"
 
     GPU=0
-    if have nvidia-smi && nvidia-smi >/dev/null 2>&1; then
-        GPU=1
-        # cuBLAS/cuDNN from pip: no system CUDA toolkit needed (voice.py sets LD_LIBRARY_PATH).
-        if pip_install nvidia-cublas-cu12 nvidia-cudnn-cu12; then
-            ok "CUDA libraries installed (NVIDIA GPU found)"
-        else
-            warn "CUDA libraries failed to install — recognition falls back to the CPU"
-        fi
+    have nvidia-smi && nvidia-smi >/dev/null 2>&1 && GPU=1
+
+    if [ -n "$REUSE_VENV" ]; then
+        # Someone else's venv: check it, never install into it.
+        "$VENV/bin/python" -c "import faster_whisper" 2>/dev/null \
+            || fail "$REUSE_VENV has no faster-whisper — install it there or drop --voice-venv"
+        ok "faster-whisper found in $REUSE_VENV"
     else
-        ok "no NVIDIA GPU — speech recognition will run on the CPU"
+        pip_install faster-whisper || fail "could not install faster-whisper into $VENV"
+        ok "faster-whisper installed"
+        if [ "$GPU" = 1 ]; then
+            # cuBLAS/cuDNN from pip: no system CUDA toolkit needed (voice.py sets LD_LIBRARY_PATH).
+            if pip_install nvidia-cublas-cu12 nvidia-cudnn-cu12; then
+                ok "CUDA libraries installed (NVIDIA GPU found)"
+            else
+                warn "CUDA libraries failed to install — recognition falls back to the CPU"
+            fi
+        else
+            ok "no NVIDIA GPU — speech recognition will run on the CPU"
+        fi
     fi
 
     if [ "$WITH_MODEL" = 1 ]; then
