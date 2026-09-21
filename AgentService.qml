@@ -192,7 +192,7 @@ Singleton {
     }
 
     function openScreenshot(path) {
-        runQuietExit("xdg-open " + shellQuote(path) + " >/dev/null 2>&1 &", function() {});
+        runQuietExit(shellQuote(screenshotScript) + " --open " + shellQuote(path), function() {});
     }
 
     // --- Hotkey ---

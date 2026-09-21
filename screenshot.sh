@@ -9,6 +9,21 @@
 # picture is taken from the clipboard, which needs no knowledge of that setting.
 set -uo pipefail
 
+# "--open FILE" shows a shot in the image viewer instead of taking one.
+# xdg-open is not used first on purpose: under niri it hangs without ever
+# starting the viewer, so the click appeared to do nothing at all.
+if [ "${1:-}" = "--open" ]; then
+    file="${2:-}"
+    [ -n "$file" ] || { echo "no-file"; exit 1; }
+    if command -v gio >/dev/null 2>&1; then
+        setsid gio open "$file" >/dev/null 2>&1 &
+    else
+        setsid xdg-open "$file" >/dev/null 2>&1 &
+    fi
+    echo "ok"
+    exit 0
+fi
+
 out="${1:-}"
 [ -n "$out" ] || { echo "no-output-path"; exit 1; }
 
