@@ -44,7 +44,9 @@ var STRINGS = {
 
         // The wording an attachment reaches the agent with.
         "prompt.oneImage": "Look at the image {paths} — this is what is on screen right now.",
-        "prompt.manyImages": "Look at the images ({paths}) — this is what is on screen right now."
+        "prompt.manyImages": "Look at the images ({paths}) — this is what is on screen right now.",
+        "prompt.oneFile": "Attached file: {paths}",
+        "prompt.manyFiles": "Attached files: {paths}"
     },
 
     ru: {
@@ -84,7 +86,9 @@ var STRINGS = {
         "error.noWindow": "Не удалось снять активное окно",
 
         "prompt.oneImage": "Посмотри изображение {paths} — это то, что сейчас на экране.",
-        "prompt.manyImages": "Посмотри изображения ({paths}) — это то, что сейчас на экране."
+        "prompt.manyImages": "Посмотри изображения ({paths}) — это то, что сейчас на экране.",
+        "prompt.oneFile": "Прикреплённый файл: {paths}",
+        "prompt.manyFiles": "Прикреплённые файлы: {paths}"
     }
 };
 

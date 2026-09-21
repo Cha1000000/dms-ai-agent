@@ -165,8 +165,8 @@ Item {
 
     Timer {
         interval: 5000
-        running: AgentService.screenshotError !== ""
-        onTriggered: AgentService.screenshotError = ""
+        running: AgentService.attachError !== ""
+        onTriggered: AgentService.attachError = ""
     }
 
     // --- Input Card (anchored to bottom) ---
@@ -188,51 +188,78 @@ Item {
         ColumnLayout {
             id: inputCol; width: parent.width; spacing: 0
 
-            // Screenshots waiting to go with the next message. Click one to open
-            // it full size, the cross drops it.
+            // Waiting to go with the next message. Click one to open it, the
+            // cross drops it.
             Flow {
                 Layout.fillWidth: true
                 Layout.leftMargin: 14; Layout.rightMargin: 14
-                Layout.topMargin: AgentService.pendingScreenshots.length > 0 ? 12 : 0
+                Layout.topMargin: AgentService.pendingAttachments.length > 0 ? 12 : 0
                 spacing: 8
-                visible: AgentService.pendingScreenshots.length > 0
+                visible: AgentService.pendingAttachments.length > 0
 
                 Repeater {
-                    model: AgentService.pendingScreenshots
+                    model: AgentService.pendingAttachments
 
                     Rectangle {
-                        required property string modelData
+                        required property var modelData
 
-                        width: 84; height: 58; radius: 8
+                        readonly property string path: modelData.path
+                        readonly property string fileName: path.substring(path.lastIndexOf("/") + 1)
+                        readonly property bool isImage: /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(path)
+
+                        width: isImage ? 84 : Math.min(150, nameText.implicitWidth + 40)
+                        height: 58; radius: 8
+                        clip: true
                         color: Theme.surfaceVariant
                         border.width: 1
-                        border.color: shotArea.containsMouse ? Theme.primary : Theme.withAlpha(Theme.outlineVariant, 0.5)
-
-                        clip: true
+                        border.color: attachArea.containsMouse ? Theme.primary : Theme.withAlpha(Theme.outlineVariant, 0.5)
 
                         Image {
+                            visible: parent.isImage
                             anchors.fill: parent
                             anchors.margins: 1
-                            source: "file://" + parent.modelData
+                            source: parent.isImage ? "file://" + parent.path : ""
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
                             cache: false
                         }
 
+                        Column {
+                            visible: !parent.isImage
+                            anchors.centerIn: parent
+                            width: parent.width - 16
+                            spacing: 2
+
+                            DankIcon {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                name: "description"; size: 20; color: Theme.surfaceVariantText
+                            }
+
+                            Text {
+                                id: nameText
+                                width: parent.width
+                                text: fileName
+                                font.pixelSize: 9
+                                color: Theme.surfaceText
+                                elide: Text.ElideMiddle
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                        }
+
                         MouseArea {
-                            id: shotArea
+                            id: attachArea
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: AgentService.openScreenshot(parent.modelData)
+                            onClicked: AgentService.openAttachment(parent.path)
                         }
 
                         Rectangle {
                             anchors.top: parent.top; anchors.right: parent.right
                             anchors.margins: 2
                             width: 16; height: 16; radius: 8
-                            color: dropArea.containsMouse ? Theme.error || "#EF4444"
-                                                          : Theme.withAlpha(Theme.shadow || "#000000", 0.6)
+                            color: dropAttachArea.containsMouse ? Theme.error || "#EF4444"
+                                                                : Theme.withAlpha(Theme.shadow || "#000000", 0.6)
 
                             DankIcon {
                                 anchors.centerIn: parent
@@ -240,11 +267,11 @@ Item {
                             }
 
                             MouseArea {
-                                id: dropArea
+                                id: dropAttachArea
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: AgentService.removeScreenshot(parent.parent.modelData)
+                                onClicked: AgentService.removeAttachment(parent.parent.path)
                             }
                         }
                     }
@@ -255,10 +282,34 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.max(44, inputField.contentHeight + 24)
 
+                // Opens the desktop's own file chooser — the same dialog a
+                // browser shows for "choose a file".
+                Rectangle {
+                    id: attachButton
+                    width: 28; height: 28; radius: 14
+                    anchors.left: parent.left; anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: attachBtnArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.35) : "transparent"
+
+                    DankIcon {
+                        anchors.centerIn: parent
+                        name: "attach_file"; size: 16
+                        color: Theme.surfaceVariantText
+                    }
+
+                    MouseArea {
+                        id: attachBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: AgentService.pickFiles()
+                    }
+                }
+
                 TextEdit {
                     id: inputField
                     anchors.fill: parent
-                    anchors.leftMargin: 18; anchors.rightMargin: 18
+                    anchors.leftMargin: 46; anchors.rightMargin: 18
                     anchors.topMargin: 12; anchors.bottomMargin: 12
                     color: Theme.surfaceText; font.pixelSize: 14
                     wrapMode: TextEdit.Wrap; clip: true
@@ -325,7 +376,7 @@ Item {
                         width: 26; height: 26; radius: 13
                         color: newChatArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
                         DankIcon { anchors.centerIn: parent; name: "add"; color: Theme.surfaceVariantText; size: 16 }
-                        MouseArea { id: newChatArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.clearMessages(); AgentService.clearScreenshots(false); messageModel.clear(); } }
+                        MouseArea { id: newChatArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.clearMessages(); AgentService.clearAttachments(false); messageModel.clear(); } }
                     }
 
                     // History
@@ -383,8 +434,8 @@ Item {
 
                     // Voice input: error, recording timer, mic button
                     Text {
-                        visible: (AgentService.voiceError !== "" || AgentService.screenshotError !== "") && !AgentService.busy
-                        text: AgentService.voiceError || AgentService.screenshotError
+                        visible: (AgentService.voiceError !== "" || AgentService.attachError !== "") && !AgentService.busy
+                        text: AgentService.voiceError || AgentService.attachError
                         color: Theme.error || "#EF4444"; font.pixelSize: 10
                         elide: Text.ElideRight; Layout.maximumWidth: 240
                         Layout.alignment: Qt.AlignVCenter
@@ -404,7 +455,7 @@ Item {
                         visible: !AgentService.busy
                         width: 32; height: 32; radius: 16
                         Layout.alignment: Qt.AlignVCenter
-                        readonly property bool armed: AgentService.pendingScreenshots.length > 0
+                        readonly property bool armed: AgentService.pendingAttachments.some(function(a) { return a.kind === "shot"; })
                         color: armed ? Theme.withAlpha(Theme.primary, 0.15)
                             : (shotBtnArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
 
@@ -903,21 +954,31 @@ Item {
 
     function sendCurrentMessage() {
         var text = inputField.text.trim();
-        var shots = AgentService.pendingScreenshots;
-        if ((!text && shots.length === 0) || AgentService.busy) return;
+        var items = AgentService.pendingAttachments;
+        if ((!text && items.length === 0) || AgentService.busy) return;
 
-        // Attachments reach the agent as paths it opens itself. The files are
-        // left on disk — it reads them after this returns — and cleaned up with
-        // the next capture or when the chat is cleared.
+        // Attachments reach the agent as paths it opens itself. Screenshots and
+        // chosen files are worded differently: one is "what is on screen", the
+        // other is a file, and the agent should not confuse them.
         var sent = text;
-        if (shots.length > 0) {
-            var intro = AgentService.tr(shots.length === 1 ? "prompt.oneImage" : "prompt.manyImages",
-                                        { paths: shots.join(", ") });
-            sent = intro + (text ? "\n\n" + text : "");
+        if (items.length > 0) {
+            var shots = [], files = [];
+            for (var i = 0; i < items.length; i++)
+                (items[i].kind === "shot" ? shots : files).push(items[i].path);
+
+            var lines = [];
+            if (shots.length > 0)
+                lines.push(AgentService.tr(shots.length === 1 ? "prompt.oneImage" : "prompt.manyImages",
+                                           { paths: shots.join(", ") }));
+            if (files.length > 0)
+                lines.push(AgentService.tr(files.length === 1 ? "prompt.oneFile" : "prompt.manyFiles",
+                                           { paths: files.join(", ") }));
+
+            sent = lines.join("\n") + (text ? "\n\n" + text : "");
         }
 
         inputField.text = "";
-        AgentService.clearScreenshots(true);
+        AgentService.clearAttachments(true);
         AgentService.sendMessage(sent);
     }
 

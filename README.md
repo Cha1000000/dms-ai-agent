@@ -30,6 +30,7 @@ so improvements made there arrive here too.
 | Voice | — | mic button, local Whisper (GPU or CPU), nothing leaves your machine |
 | Transcribing others | — | a second button listens to the speakers, for the far side of a call your mic cannot hear |
 | Showing the agent your screen | — | attach shots of the focused window to a message; the agent reads them |
+| Attachments | — | paperclip opens the desktop's own file chooser; attach any file to a message |
 | Replies | plain labels: nothing could be selected or copied | select with the mouse, or copy a whole reply as markdown or as plain text |
 | Chat position | always bottom-centre | left edge, centre or right edge, remembered per monitor |
 | Look | grey border | neon gradient rim, custom icon and label |
@@ -134,6 +135,19 @@ and music included, and several speakers come out as one undivided block of text
 Your own voice is not in there — it goes to the microphone, not to the output.
 
 Both buttons drive the same single recording, so while one is running the other is dimmed.
+
+### Attaching files
+
+The paperclip at the left of the input box opens the desktop's own file chooser —
+the same dialog a browser shows, so it looks and behaves the way the rest of the
+system does. Pick one file or several; each appears as a card above the input box,
+images as thumbnails and everything else as a name. Click a card to open the file,
+the cross to drop it.
+
+Dropping a card never deletes the file itself — only screenshots this plugin took
+are its own to remove.
+
+The portal is used where it exists, with zenity and kdialog behind it.
 
 ### Showing the agent your screen
 

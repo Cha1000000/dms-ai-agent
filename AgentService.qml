@@ -171,44 +171,71 @@ Singleton {
         });
     }
 
-    // --- Screenshots attached to the next message ---
-    // The agent reads images with its own file-reading tool, so an attachment is
-    // just a path handed to it in the prompt. Files live in the runtime dir: they
-    // are worth nothing after a reboot, and this keeps them out of ~/Pictures.
-    property var pendingScreenshots: []
-    property string screenshotError: ""
+    // --- Attachments for the next message ---
+    // The agent reads files with its own reading tool, so an attachment is just
+    // a path handed to it in the prompt. Each entry is {path, kind}: "shot" for
+    // screenshots this plugin took, "file" for something the user picked.
+    // The difference matters on removal — a screenshot is ours to delete, a
+    // chosen file is not.
+    property var pendingAttachments: []
+    property string attachError: ""
 
     readonly property string screenshotScript: decodeURIComponent(String(Qt.resolvedUrl("screenshot.sh")).replace(/^file:\/\//, ""))
+    readonly property string pickScript: decodeURIComponent(String(Qt.resolvedUrl("pickfiles.py")).replace(/^file:\/\//, ""))
     readonly property string screenshotDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp")
 
     function captureWindow() {
         var path = screenshotDir + "/dms-agent-shot-" + Date.now() + ".png";
-        screenshotError = "";
+        attachError = "";
         run(shellQuote(screenshotScript) + " " + shellQuote(path) + " 2>&1", function(output) {
             if (String(output).trim() !== "ok") {
                 // The chat holds keyboard focus but not window focus, so this only
                 // happens when there is genuinely no window to shoot.
-                screenshotError = tr("error.noWindow");
+                attachError = tr("error.noWindow");
                 return;
             }
-            pendingScreenshots = pendingScreenshots.concat([path]);
+            pendingAttachments = pendingAttachments.concat([{ path: path, kind: "shot" }]);
         });
     }
 
-    function removeScreenshot(path) {
-        pendingScreenshots = pendingScreenshots.filter(function(p) { return p !== path; });
-        runQuietExit("rm -f " + shellQuote(path), function() {});
+    function pickFiles() {
+        attachError = "";
+        run("python3 " + shellQuote(pickScript), function(output) {
+            var lines = String(output).split("\n");
+            var added = [];
+            for (var i = 0; i < lines.length; i++) {
+                var path = lines[i].trim();
+                if (path !== "") added.push({ path: path, kind: "file" });
+            }
+            if (added.length > 0) pendingAttachments = pendingAttachments.concat(added);
+        });
     }
 
-    function clearScreenshots(keepFiles) {
-        if (!keepFiles) {
-            for (var i = 0; i < pendingScreenshots.length; i++)
-                runQuietExit("rm -f " + shellQuote(pendingScreenshots[i]), function() {});
+    function removeAttachment(path) {
+        var kept = [];
+        var wasShot = false;
+        for (var i = 0; i < pendingAttachments.length; i++) {
+            var item = pendingAttachments[i];
+            if (item.path === path) wasShot = item.kind === "shot";
+            else kept.push(item);
         }
-        pendingScreenshots = [];
+        pendingAttachments = kept;
+        // Only screenshots are ours: deleting a file the user chose would be
+        // deleting their document.
+        if (wasShot) runQuietExit("rm -f " + shellQuote(path), function() {});
     }
 
-    function openScreenshot(path) {
+    function clearAttachments(keepFiles) {
+        if (!keepFiles) {
+            for (var i = 0; i < pendingAttachments.length; i++) {
+                if (pendingAttachments[i].kind === "shot")
+                    runQuietExit("rm -f " + shellQuote(pendingAttachments[i].path), function() {});
+            }
+        }
+        pendingAttachments = [];
+    }
+
+    function openAttachment(path) {
         runQuietExit(shellQuote(screenshotScript) + " --open " + shellQuote(path), function() {});
     }
 
