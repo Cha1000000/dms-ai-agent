@@ -1,3 +1,6 @@
 *.qmlc
 __pycache__/
 *.pyc
+
+# Some apps create this when XDG_CACHE_HOME is set with an unexpanded tilde
+~/
