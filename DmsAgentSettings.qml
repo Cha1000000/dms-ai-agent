@@ -134,6 +134,16 @@ PluginSettings {
                     unit: "px"
                 }
 
+                SliderSetting {
+                    settingKey: "panelHeightPercent"
+                    label: "Chat Height"
+                    description: "How much of the monitor's height the chat window takes."
+                    defaultValue: 75
+                    minimum: 40
+                    maximum: 95
+                    unit: "%"
+                }
+
                 ToggleSetting {
                     settingKey: "autoUpdate"
                     label: "Auto-update"

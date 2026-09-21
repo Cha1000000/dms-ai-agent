@@ -53,6 +53,9 @@ Singleton {
     // Set from the plugin settings (DmsAgent.qml).
     property int maxTokens: 1024
     property int bubbleFontSize: 13
+    // Доля высоты монитора, которую занимает окно чата. Фиксированная высота
+    // выглядела по-разному на широком и на вертикальном экране.
+    property int panelHeightPercent: 75
     property string pillLabel: "Jarvis"
     property string voiceModel: "auto"
     property string voiceLanguage: "auto"

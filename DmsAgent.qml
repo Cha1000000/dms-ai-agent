@@ -72,6 +72,7 @@ PluginComponent {
         AgentService.claudeModel = pluginData.claudeModel || "haiku";
         AgentService.maxTokens = parseInt(pluginData.maxTokens) || 1024;
         AgentService.bubbleFontSize = parseInt(pluginData.bubbleFontSize) || 13;
+        AgentService.panelHeightPercent = parseInt(pluginData.panelHeightPercent) || 75;
         AgentService.extendedThinking = pluginData.extendedThinking === true;
         if (pluginData.systemPrompt) AgentService.systemPrompt = pluginData.systemPrompt;
         AgentService.pillLabel = pluginData.pillLabel || "Jarvis";
@@ -129,7 +130,12 @@ PluginComponent {
         WlrLayershell.margins.bottom: 44
 
         implicitWidth: 660
-        implicitHeight: 740
+        // Отсчитывается от монитора, на котором панель показана, за вычетом
+        // отступа снизу; на маленьком экране не должна упереться в бар.
+        implicitHeight: {
+            var available = (screen ? screen.height : 1080) - WlrLayershell.margins.bottom - 48;
+            return Math.max(420, Math.round(available * AgentService.panelHeightPercent / 100));
+        }
 
         Item {
             id: animContainer
