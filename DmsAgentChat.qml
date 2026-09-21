@@ -52,7 +52,7 @@ Item {
             }
 
             Text {
-                text: chip.copied ? "copied" : chip.label
+                text: chip.copied ? AgentService.tr("bubble.copied") : chip.label
                 font.pixelSize: 9
                 color: chip.copied ? Theme.primary : chip.fg
                 anchors.verticalCenter: parent.verticalCenter
@@ -265,7 +265,7 @@ Item {
 
                     Text {
                         visible: !inputField.text && !inputField.activeFocus
-                        text: "Message..."
+                        text: AgentService.tr("input.placeholder")
                         color: Theme.surfaceVariantText; font.pixelSize: 14
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -315,7 +315,7 @@ Item {
                         Row {
                             id: thinkRow; anchors.centerIn: parent; spacing: 4
                             DankIcon { name: "psychology"; color: AgentService.extendedThinking ? Theme.primary : Theme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
-                            Text { text: "Think"; font.pixelSize: 11; color: AgentService.extendedThinking ? Theme.primary : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: AgentService.tr("toolbar.think"); font.pixelSize: 11; color: AgentService.extendedThinking ? Theme.primary : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
                         }
                         MouseArea { id: thinkArea; anchors.fill: parent; hoverEnabled: true; onClicked: AgentService.extendedThinking = !AgentService.extendedThinking }
                     }
@@ -470,7 +470,7 @@ Item {
             id: modelCol; anchors.top: parent.top; anchors.topMargin: 4
             anchors.left: parent.left; anchors.right: parent.right
             Repeater {
-                model: [{ id: "haiku", label: "Haiku", desc: "Fast" }, { id: "sonnet", label: "Sonnet", desc: "Balanced" }, { id: "opus", label: "Opus", desc: "Best" }]
+                model: [{ id: "haiku", label: "Haiku", desc: AgentService.tr("model.fast") }, { id: "sonnet", label: "Sonnet", desc: AgentService.tr("model.balanced") }, { id: "opus", label: "Opus", desc: AgentService.tr("model.best") }]
                 Rectangle {
                     width: modelCol.width; height: 32; radius: 8
                     color: optArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
@@ -499,7 +499,7 @@ Item {
 
         Text {
             visible: AgentService.history.length === 0
-            text: "No conversations yet"; color: Theme.surfaceVariantText; font.pixelSize: 12
+            text: AgentService.tr("history.empty"); color: Theme.surfaceVariantText; font.pixelSize: 12
             anchors.centerIn: parent
         }
 
@@ -526,7 +526,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
-                    text: "Clear all"; font.pixelSize: 10
+                    text: AgentService.tr("history.clearAll"); font.pixelSize: 10
                     color: clearAllArea.containsMouse ? (Theme.error || "#EF4444") : Theme.surfaceVariantText
                     anchors.verticalCenter: parent.verticalCenter
                 }
@@ -593,13 +593,14 @@ Item {
 
     function askDeleteSession(id, title) {
         confirmSessionId = id;
-        confirmText = "Delete this conversation?\n\n" + title;
+        confirmText = AgentService.tr("confirm.deleteOne") + "\n\n" + title;
         confirmDialog.visible = true;
     }
 
     function askDeleteAll() {
         confirmSessionId = "";
-        confirmText = "Delete all " + AgentService.history.length + " conversations?\n\nThis cannot be undone.";
+        confirmText = AgentService.tr("confirm.deleteAll", { n: AgentService.history.length })
+            + "\n\n" + AgentService.tr("confirm.irreversible");
         confirmDialog.visible = true;
     }
 
@@ -647,7 +648,7 @@ Item {
                         width: 92; height: 30; radius: 15
                         color: cancelBtnArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.5) : Theme.withAlpha(Theme.surfaceVariant, 0.25)
                         Text {
-                            anchors.centerIn: parent; text: "Cancel"
+                            anchors.centerIn: parent; text: AgentService.tr("confirm.cancel")
                             font.pixelSize: 12; color: Theme.surfaceText
                         }
                         MouseArea {
@@ -662,7 +663,7 @@ Item {
                         width: 92; height: 30; radius: 15
                         color: deleteBtnArea.containsMouse ? (Theme.error || "#EF4444") : Theme.withAlpha(Theme.error || "#EF4444", 0.8)
                         Text {
-                            anchors.centerIn: parent; text: "Delete"
+                            anchors.centerIn: parent; text: AgentService.tr("confirm.delete")
                             font.pixelSize: 12; font.weight: Font.Bold; color: "#FFFFFF"
                         }
                         MouseArea {
@@ -824,7 +825,7 @@ Item {
                     visible: opacity > 0
                     Behavior on opacity { NumberAnimation { duration: 120 } }
 
-                    label: "Text"
+                    label: AgentService.tr("bubble.copyText")
                     fg: Theme.primaryText
                     bg: Theme.withAlpha(Theme.primaryText, 0.15)
                     onRequested: chatRoot.copyToClipboard(content)
@@ -887,12 +888,12 @@ Item {
                     // "md" keeps what the agent actually sent — headings, bold,
                     // fenced code. "Text" is what the bubble shows, without markup.
                     CopyChip {
-                        label: "md"
+                        label: AgentService.tr("bubble.copyMarkdown")
                         onRequested: chatRoot.copyToClipboard(content)
                     }
 
                     CopyChip {
-                        label: "Text"
+                        label: AgentService.tr("bubble.copyText")
                         onRequested: chatRoot.copyToClipboard(aTxt.getText(0, aTxt.length))
                     }
                 }
@@ -910,9 +911,8 @@ Item {
         // the next capture or when the chat is cleared.
         var sent = text;
         if (shots.length > 0) {
-            var intro = shots.length === 1
-                ? "Посмотри изображение " + shots[0] + " — это то, что сейчас на экране."
-                : "Посмотри изображения (" + shots.join(", ") + ") — это то, что сейчас на экране.";
+            var intro = AgentService.tr(shots.length === 1 ? "prompt.oneImage" : "prompt.manyImages",
+                                        { paths: shots.join(", ") });
             sent = intro + (text ? "\n\n" + text : "");
         }
 

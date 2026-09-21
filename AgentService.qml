@@ -3,9 +3,26 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "i18n.js" as I18n
 
 Singleton {
     id: root
+
+    // Interface language. The Language setting is about speech recognition, but
+    // someone who fixes it to their own language means the plugin to speak it —
+    // so it drives the interface too. Left on "auto" it follows the locale.
+    readonly property string uiLanguage: {
+        var lang = (voiceLanguage && voiceLanguage !== "auto") ? voiceLanguage : "";
+        if (!lang) {
+            var env = Quickshell.env("LC_ALL") || Quickshell.env("LC_MESSAGES") || Quickshell.env("LANG") || "";
+            lang = String(env).substring(0, 2);
+        }
+        return String(lang).toLowerCase();
+    }
+
+    function tr(key, args) {
+        return I18n.t(uiLanguage, key, args);
+    }
 
     property string claudeModel: "haiku"
     property bool extendedThinking: false
@@ -42,7 +59,7 @@ Singleton {
     property string voiceVenv: ""
 
     property bool busy: false
-    property string statusText: "Ready"
+    property string statusText: tr("status.ready")
     property var messages: []
     property bool popoutVisible: false
     property string sessionId: ""
@@ -135,7 +152,7 @@ Singleton {
         _recProcess = null;
         if (_recCancelled || voiceState === "recording") {
             // Cancelled, or pw-record died on its own (no microphone, PipeWire down).
-            if (!_recCancelled) voiceError = voiceSource === "output" ? "No audio output to capture" : "Microphone unavailable";
+            if (!_recCancelled) voiceError = tr(voiceSource === "output" ? "error.noOutput" : "error.micUnavailable");
             voiceState = "idle";
             runQuietExit("rm -f " + shellQuote(voiceWav), function() {});
             return;
@@ -146,9 +163,9 @@ Singleton {
         runQuietExit(env + "python3 " + shellQuote(voiceScript) + " transcribe " + shellQuote(voiceWav)
                 + "; rm -f " + shellQuote(voiceWav), function(output) {
             var result = {};
-            try { result = JSON.parse(String(output).trim()); } catch(e) { result = { error: "No response from speech recognition" }; }
+            try { result = JSON.parse(String(output).trim()); } catch(e) { result = { error: tr("error.noRecognition") }; }
             if (result.error) voiceError = result.error;
-            else if (!result.text) voiceError = "No speech recognized";
+            else if (!result.text) voiceError = tr("error.noSpeech");
             else voiceTextReady(result.text);
             voiceState = "idle";
         });
@@ -171,7 +188,7 @@ Singleton {
             if (String(output).trim() !== "ok") {
                 // The chat holds keyboard focus but not window focus, so this only
                 // happens when there is genuinely no window to shoot.
-                screenshotError = "Could not capture the focused window";
+                screenshotError = tr("error.noWindow");
                 return;
             }
             pendingScreenshots = pendingScreenshots.concat([path]);
@@ -362,7 +379,7 @@ Singleton {
         sessionId = historySessionId;
         messages = [];
         busy = true;
-        statusText = "Loading session...";
+        statusText = tr("status.loadingSession");
 
         runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " restore " + shellQuote(historySessionId), function(output) {
             var loaded = [];
@@ -378,7 +395,7 @@ Singleton {
                 addMessage("assistant", "Session resumed.");
             }
             busy = false;
-            statusText = "Ready";
+            statusText = tr("status.ready");
         });
     }
 
@@ -411,7 +428,7 @@ Singleton {
         if (intent) {
             prefetchContext(intent, function(ctx) { callClaude(text + "\n" + ctx); });
         } else {
-            statusText = "Thinking...";
+            statusText = tr("status.thinking");
             callClaude(text);
         }
     }
@@ -419,7 +436,7 @@ Singleton {
     // --- Pre-fetch context ---
     function prefetchContext(intent, callback) {
         if (intent.intent === "goto") {
-            statusText = "Scanning windows...";
+            statusText = tr("status.scanningWindows");
             runQuietExit("niri msg -j windows 2>/dev/null", function(output) {
                 var windows; try { windows = JSON.parse(output); } catch(e) { windows = []; }
                 var summary = windows.map(function(w) {
@@ -428,12 +445,12 @@ Singleton {
                 callback("[Open windows]\n" + summary);
             });
         } else if (intent.intent === "close") {
-            statusText = "Scanning processes...";
+            statusText = tr("status.scanningProcesses");
             runQuietExit("ps aux | grep -iv grep | grep -i " + shellQuote(intent.target) + " | head -10", function(output) {
                 callback("[Matching processes]\n" + String(output).trim());
             });
         } else if (intent.intent === "open") {
-            statusText = "Searching apps...";
+            statusText = tr("status.searchingApps");
             var q = intent.target.toLowerCase();
             var cmd = "for dir in /usr/share/applications /usr/local/share/applications \"$HOME/.local/share/applications\"; do "
                 + "[ -d \"$dir\" ] || continue; grep -ril " + shellQuote(q) + " \"$dir\"/*.desktop 2>/dev/null; done "
@@ -493,12 +510,12 @@ Singleton {
             _claudeProcess.signal(15);
             _claudeProcess = null;
             busy = false;
-            statusText = "Ready";
+            statusText = tr("status.ready");
         }
     }
 
     function callClaude(prompt) {
-        statusText = extendedThinking ? "Thinking..." : "Processing...";
+        statusText = tr(extendedThinking ? "status.thinking" : "status.processing");
         _gotResult = false;
         _lastText = "";
         _toolNames = ({});
@@ -527,7 +544,7 @@ Singleton {
             for (var i = 0; i < content.length; i++) {
                 var block = content[i];
                 if (block.type === "thinking") {
-                    statusText = "Thinking...";
+                    statusText = tr("status.thinking");
                 } else if (block.type === "tool_use") {
                     var newNames = Object.assign({}, _toolNames);
                     newNames[block.id] = block.name;
@@ -537,7 +554,7 @@ Singleton {
                     statusText = step;
                 } else if (block.type === "text" && block.text) {
                     _lastText = block.text;
-                    statusText = "Writing answer...";
+                    statusText = tr("status.writing");
                 }
             }
         } else if (ev.type === "user") {
@@ -547,7 +564,7 @@ Singleton {
                 if (res.is_error) {
                     addMessage("tool_status", "✗ " + (_toolNames[res.tool_use_id] || "tool") + " failed");
                 }
-                statusText = extendedThinking ? "Thinking..." : "Processing...";
+                statusText = tr(extendedThinking ? "status.thinking" : "status.processing");
             }
         } else if (ev.type === "result") {
             _gotResult = true;
@@ -590,7 +607,7 @@ Singleton {
 
     function finishResponse(text) {
         addMessage("assistant", text);
-        busy = false; statusText = "Ready";
+        busy = false; statusText = tr("status.ready");
         responseComplete(); notifyIfHidden(text);
     }
 }

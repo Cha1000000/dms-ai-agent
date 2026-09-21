@@ -94,7 +94,7 @@ Then, in DMS:
 | Message Text Size | `13px` | font size in the chat bubbles, 11–22 |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
 | Microphone | System default | dropdown of the capture devices PipeWire knows, under the names the audio settings show |
-| Language | `auto` | or a fixed code (`en`, `ru`, `de`, …) — more accurate for short phrases |
+| Language | `auto` | speech recognition **and** interface language; a fixed code is also more accurate for short phrases |
 | Whisper venv | installer's | path to a venv with `faster-whisper` |
 
 ### Hotkey
@@ -157,6 +157,12 @@ Message text is selectable: drag across it and press `Ctrl+C`, `Esc` clears the 
 the cursor back in the input box. Hovering a bubble also reveals two buttons in its corner — **md**
 copies what the agent actually sent, headings, bold and fenced code intact, and **Text** copies the
 same without any markup. Your own messages get a single button.
+
+### Language
+
+Setting **Language** to a code translates the interface into it as well, not just
+speech recognition — on `auto` the interface follows your locale. English and Russian
+ship with the plugin; another language is a table in `i18n.js` and nothing else.
 
 ### Clearing history
 
