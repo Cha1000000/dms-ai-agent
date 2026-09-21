@@ -339,6 +339,24 @@ Singleton {
         });
     }
 
+    // Deleting a session removes its transcript from disk — there is no other
+    // copy. Confirmation happens in the UI before either of these is called.
+    function deleteSession(historySessionId) {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " delete " + shellQuote(historySessionId), function() {
+            // Wiping the session being displayed leaves the chat pointing at a
+            // transcript that no longer exists, so it is reset to a fresh one.
+            if (sessionId === historySessionId) clearMessages();
+            loadHistory();
+        });
+    }
+
+    function deleteAllSessions() {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " delete-all", function() {
+            clearMessages();
+            loadHistory();
+        });
+    }
+
     function resumeSession(historySessionId) {
         if (busy) return;
         sessionId = historySessionId;

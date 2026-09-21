@@ -53,6 +53,30 @@ if action == "list":
             results.append({"id": sid, "title": title, "date": int(mtime * 1000)})
     print(json.dumps(results))
 
+elif action == "delete":
+    # Only ever removes agent sessions: an interactive Claude Code session
+    # started in the same directory must survive, and the id arrives from the
+    # outside, so it is checked rather than trusted.
+    sid = sys.argv[2] if len(sys.argv) > 2 else ""
+    ok = False
+    if sid and "/" not in sid and ".." not in sid:
+        path = base + sid + ".jsonl"
+        if os.path.isfile(path) and is_agent_session(path):
+            os.remove(path)
+            ok = True
+    print(json.dumps({"deleted": 1 if ok else 0}))
+
+elif action == "delete-all":
+    removed = 0
+    for f in glob.glob(base + "*.jsonl"):
+        if is_agent_session(f):
+            try:
+                os.remove(f)
+                removed += 1
+            except OSError:
+                pass
+    print(json.dumps({"deleted": removed}))
+
 elif action == "restore":
     sid = sys.argv[2] if len(sys.argv) > 2 else ""
     session_file = base + sid + ".jsonl"

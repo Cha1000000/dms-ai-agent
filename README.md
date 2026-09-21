@@ -158,6 +158,14 @@ the cursor back in the input box. Hovering a bubble also reveals two buttons in 
 copies what the agent actually sent, headings, bold and fenced code intact, and **Text** copies the
 same without any markup. Your own messages get a single button.
 
+### Clearing history
+
+Each row in the history list has a cross that deletes that conversation, and
+*Clear all* in the corner removes every one of them. Both ask first: a transcript
+is deleted from disk and there is no copy anywhere. Only agent conversations are
+touched — an interactive Claude Code session started in the same directory is left
+alone, and the id is verified rather than trusted.
+
 ### Where the chat opens
 
 The three buttons next to *history* pin the chat to the **left edge**, the **centre** or the

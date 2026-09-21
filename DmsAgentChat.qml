@@ -503,22 +503,181 @@ Item {
             anchors.centerIn: parent
         }
 
+        // Clears every stored conversation — behind a confirmation, like the
+        // per-row crosses.
+        Rectangle {
+            id: clearAllButton
+            visible: AgentService.history.length > 0
+            anchors.top: parent.top; anchors.right: parent.right
+            anchors.topMargin: 6; anchors.rightMargin: 8
+            width: clearAllRow.width + 16; height: 24; radius: 12
+            z: 2
+            color: clearAllArea.containsMouse ? Theme.withAlpha(Theme.error || "#EF4444", 0.15) : "transparent"
+            border.width: 1
+            border.color: Theme.withAlpha(Theme.outlineVariant, 0.5)
+
+            Row {
+                id: clearAllRow
+                anchors.centerIn: parent
+                spacing: 4
+                DankIcon {
+                    name: "delete"; size: 13
+                    color: clearAllArea.containsMouse ? (Theme.error || "#EF4444") : Theme.surfaceVariantText
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: "Clear all"; font.pixelSize: 10
+                    color: clearAllArea.containsMouse ? (Theme.error || "#EF4444") : Theme.surfaceVariantText
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            MouseArea {
+                id: clearAllArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: chatRoot.askDeleteAll()
+            }
+        }
+
         ListView {
-            anchors.fill: parent; anchors.margins: 4; clip: true; spacing: 0
+            anchors.fill: parent; anchors.margins: 4; anchors.topMargin: 34; clip: true; spacing: 0
             visible: AgentService.history.length > 0
             model: AgentService.history
             delegate: Rectangle {
                 width: ListView.view.width; height: 36; radius: 8
                 color: hArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
                 RowLayout {
-                    anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 8
+                    anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 8; spacing: 8
                     Text { text: modelData.title || "Chat"; font.pixelSize: 12; color: Theme.surfaceText; elide: Text.ElideRight; Layout.fillWidth: true }
                     Text {
                         text: { var d = new Date(modelData.date); return d.toLocaleDateString(undefined, {month:"short", day:"numeric"}) }
                         font.pixelSize: 10; color: Theme.surfaceVariantText
                     }
+
+                    // Above the row's own MouseArea, so it takes the click instead
+                    // of opening the conversation.
+                    Rectangle {
+                        Layout.preferredWidth: 20; Layout.preferredHeight: 20
+                        radius: 10
+                        color: dropRowArea.containsMouse ? Theme.withAlpha(Theme.error || "#EF4444", 0.2) : "transparent"
+                        opacity: dropRowArea.containsMouse ? 1 : (hArea.containsMouse ? 0.9 : 0.45)
+                        Behavior on opacity { NumberAnimation { duration: 100 } }
+
+                        DankIcon {
+                            anchors.centerIn: parent
+                            name: "close"; size: 12
+                            color: dropRowArea.containsMouse ? (Theme.error || "#EF4444") : Theme.surfaceVariantText
+                        }
+
+                        MouseArea {
+                            id: dropRowArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: chatRoot.askDeleteSession(modelData.id, modelData.title || "Chat")
+                        }
+                    }
                 }
-                MouseArea { id: hArea; anchors.fill: parent; hoverEnabled: true; onClicked: { messageModel.clear(); AgentService.resumeSession(modelData.id); historyDropdown.visible = false; } }
+                MouseArea { id: hArea; anchors.fill: parent; hoverEnabled: true; z: -1; onClicked: { messageModel.clear(); AgentService.resumeSession(modelData.id); historyDropdown.visible = false; } }
+            }
+        }
+    }
+
+    // --- Confirmation for deleting history ---
+    // Transcripts are removed from disk with no copy anywhere, so both the
+    // crosses and "Clear all" come through here first.
+    property string confirmSessionId: ""
+    property string confirmText: ""
+
+    function askDeleteSession(id, title) {
+        confirmSessionId = id;
+        confirmText = "Delete this conversation?\n\n" + title;
+        confirmDialog.visible = true;
+    }
+
+    function askDeleteAll() {
+        confirmSessionId = "";
+        confirmText = "Delete all " + AgentService.history.length + " conversations?\n\nThis cannot be undone.";
+        confirmDialog.visible = true;
+    }
+
+    Rectangle {
+        id: confirmDialog
+        visible: false
+        anchors.fill: parent
+        color: Theme.withAlpha(Theme.shadow || "#000000", 0.55)
+        z: 40
+
+        // Swallows clicks so nothing behind the dialog reacts.
+        MouseArea { anchors.fill: parent; hoverEnabled: true; onClicked: confirmDialog.visible = false }
+
+        Rectangle {
+            width: Math.min(parent.width - 48, 340)
+            height: confirmCol.height + 32
+            anchors.centerIn: parent
+            radius: 16
+            color: Theme.surfaceContainerHighest
+            border.width: 1
+            border.color: Theme.withAlpha(Theme.outlineVariant, 0.5)
+
+            MouseArea { anchors.fill: parent }
+
+            Column {
+                id: confirmCol
+                anchors.centerIn: parent
+                width: parent.width - 32
+                spacing: 16
+
+                Text {
+                    width: parent.width
+                    text: chatRoot.confirmText
+                    wrapMode: Text.Wrap
+                    color: Theme.surfaceText
+                    font.pixelSize: 13
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 8
+
+                    Rectangle {
+                        width: 92; height: 30; radius: 15
+                        color: cancelBtnArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.5) : Theme.withAlpha(Theme.surfaceVariant, 0.25)
+                        Text {
+                            anchors.centerIn: parent; text: "Cancel"
+                            font.pixelSize: 12; color: Theme.surfaceText
+                        }
+                        MouseArea {
+                            id: cancelBtnArea
+                            anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: confirmDialog.visible = false
+                        }
+                    }
+
+                    Rectangle {
+                        width: 92; height: 30; radius: 15
+                        color: deleteBtnArea.containsMouse ? (Theme.error || "#EF4444") : Theme.withAlpha(Theme.error || "#EF4444", 0.8)
+                        Text {
+                            anchors.centerIn: parent; text: "Delete"
+                            font.pixelSize: 12; font.weight: Font.Bold; color: "#FFFFFF"
+                        }
+                        MouseArea {
+                            id: deleteBtnArea
+                            anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (chatRoot.confirmSessionId === "") AgentService.deleteAllSessions();
+                                else AgentService.deleteSession(chatRoot.confirmSessionId);
+                                confirmDialog.visible = false;
+                                messageModel.clear();
+                            }
+                        }
+                    }
+                }
             }
         }
     }
