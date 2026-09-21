@@ -71,6 +71,38 @@ Item {
     // Set by the panel: several instances exist (one per bar), only the shown one takes dictation.
     property bool active: true
 
+    // Which monitor this chat belongs to — the position buttons are per-monitor.
+    property string screenName: ""
+
+    // One of the three position buttons on the toolbar.
+    component PositionButton: Rectangle {
+        id: posButton
+
+        property string position: "center"
+        property string iconName: ""
+
+        readonly property bool current: AgentService.panelPositionFor(chatRoot.screenName) === posButton.position
+
+        width: 26; height: 26; radius: 13
+        color: posButton.current ? Theme.withAlpha(Theme.primary, 0.15)
+                                 : (posArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
+
+        DankIcon {
+            anchors.centerIn: parent
+            name: posButton.iconName
+            color: posButton.current ? Theme.primary : Theme.surfaceVariantText
+            size: 16
+        }
+
+        MouseArea {
+            id: posArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: AgentService.setPanelPosition(chatRoot.screenName, posButton.position)
+        }
+    }
+
     Timer {
         interval: 5000
         running: AgentService.voiceError !== ""
@@ -180,6 +212,11 @@ Item {
                         DankIcon { anchors.centerIn: parent; name: "history"; color: Theme.surfaceVariantText; size: 16 }
                         MouseArea { id: historyArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.loadHistory(); historyDropdown.visible = !historyDropdown.visible; } }
                     }
+
+                    // Where the chat window sits on this monitor.
+                    PositionButton { position: "left";   iconName: "align_horizontal_left" }
+                    PositionButton { position: "center"; iconName: "align_horizontal_center" }
+                    PositionButton { position: "right";  iconName: "align_horizontal_right" }
 
                     Item { Layout.fillWidth: true }
 

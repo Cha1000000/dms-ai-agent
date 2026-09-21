@@ -168,6 +168,27 @@ Singleton {
         panelRequested(name);
     }
 
+    // Where the chat sits on each monitor: "left" | "center" | "right", keyed by
+    // screen name. The monitors differ enough (one wide, one portrait) that a
+    // single shared setting would suit neither.
+    property var panelPositions: ({})
+    property bool positionsLoaded: false
+
+    signal panelPositionChanged(string screenName, string position)
+
+    function panelPositionFor(screenName) {
+        return panelPositions[screenName] || "center";
+    }
+
+    function setPanelPosition(screenName, position) {
+        if (panelPositionFor(screenName) === position) return;
+        var next = {};
+        for (var key in panelPositions) next[key] = panelPositions[key];
+        next[screenName] = position;
+        panelPositions = next;   // a fresh object, so bindings on it re-evaluate
+        panelPositionChanged(screenName, position);
+    }
+
     // Keybinding entry point: open on the monitor that has focus.
     IpcHandler {
         target: "dmsAgent"

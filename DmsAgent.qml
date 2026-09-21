@@ -44,7 +44,30 @@ PluginComponent {
         return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
     }
 
+    // Chat position is picked with the buttons in the chat itself, not in the
+    // settings window, so it lives in plugin state rather than plugin data.
+    // Loaded once: both instances share the singleton that holds it.
+    // pluginService and pluginId are still empty while Component.onCompleted runs
+    // (the same way parentScreen is), so the load is driven by them arriving.
+    function loadPanelPositions() {
+        if (AgentService.positionsLoaded || !pluginService || !pluginId) return;
+        AgentService.panelPositions = pluginService.loadPluginState(pluginId, "panelPositions", {}) || {};
+        AgentService.positionsLoaded = true;
+    }
+
+    onPluginServiceChanged: loadPanelPositions()
+
+    Connections {
+        target: AgentService
+        function onPanelPositionChanged(name, position) {
+            // Only the instance whose monitor changed writes, so one click is one write.
+            if (name !== root.screenName || !root.pluginService) return;
+            root.pluginService.savePluginState(root.pluginId, "panelPositions", AgentService.panelPositions);
+        }
+    }
+
     onPluginDataChanged: {
+        loadPanelPositions();
         if (!pluginData) return;
         AgentService.claudeModel = pluginData.claudeModel || "haiku";
         AgentService.maxTokens = parseInt(pluginData.maxTokens) || 1024;
@@ -87,7 +110,13 @@ PluginComponent {
         screen: root.parentScreen || (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
         color: "transparent"
 
+        readonly property string panelPosition: AgentService.panelPositionFor(root.screenName)
+
+        // With neither side anchored the compositor centres the window; anchoring
+        // one side pins it there. That is the whole of the left/centre/right choice.
         anchors.bottom: true
+        anchors.left: panelPosition === "left"
+        anchors.right: panelPosition === "right"
 
         WlrLayershell.layer: WlrLayershell.Top
         WlrLayershell.namespace: "dms:agent"
@@ -109,6 +138,7 @@ PluginComponent {
             DmsAgentChat {
                 id: agentChat
                 active: agentPanel.isVisible
+                screenName: root.screenName
                 anchors.fill: parent
                 onEscapePressed: agentPanel.hide()
             }
