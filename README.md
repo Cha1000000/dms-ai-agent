@@ -46,7 +46,9 @@ so improvements made there arrive here too.
 
 - [DankMaterialShell](https://danklinux.com) ≥ 1.4 on **niri** (the chat itself also works on other
   compositors; the hotkey helper and "open on the focused monitor" need niri)
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI, logged in (`claude` in `PATH`)
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI, logged in (`claude` in `PATH`).
+  **Your existing Claude Code login is what pays for this** — a Claude subscription if that is
+  how you signed in. The plugin never asks for an API key and never calls the API itself.
 - `git`, `python3`, `notify-send`
 - Voice input: PipeWire (`pw-record`) and ~0.5–2 GB of disk for the Whisper model;
   an NVIDIA GPU makes it near-instant but is not required
@@ -239,6 +241,11 @@ to deleting and re-cloning the plugin.
 
 - The agent runs Claude Code with `--dangerously-skip-permissions`: it executes commands **without
   asking**. That is what makes "open X, move it to workspace 2" instant — keep it in mind.
+- **Billing follows your Claude Code login, not this plugin.** It shells out to the `claude` you
+  already have, so whatever that is authenticated with — a subscription, or an API key if you set
+  one up — is what answers. There is no key to enter here and no separate account. The cost shown
+  under the input box is what the CLI reports for the request; on a subscription it is an
+  indication of usage rather than a charge.
 - Agent sessions live in their own Claude Code project (working dir
   `~/.local/state/dms-agent`), separate from sessions you start in your home directory.
 - The chat panel is shown on one monitor at a time; the hotkey toggles it on the focused one.
