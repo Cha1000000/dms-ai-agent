@@ -42,6 +42,18 @@ var STRINGS = {
         "error.noRecognition": "No response from speech recognition",
         "error.noWindow": "Could not capture the focused window",
 
+        "tip.attach": "Attach a file",
+        "tip.newChat": "New conversation",
+        "tip.history": "History",
+        "tip.posLeft": "Chat at the left edge",
+        "tip.posCenter": "Chat in the centre",
+        "tip.posRight": "Chat at the right edge",
+        "tip.screenshot": "Attach a shot of the focused window",
+        "tip.listenOutput": "Transcribe what the speakers are playing",
+        "tip.mic": "Dictate a message",
+        "tip.send": "Send",
+        "tip.stop": "Stop the agent",
+
         // The wording an attachment reaches the agent with.
         "prompt.oneImage": "Look at the image {paths} — this is what is on screen right now.",
         "prompt.manyImages": "Look at the images ({paths}) — this is what is on screen right now.",
@@ -84,6 +96,18 @@ var STRINGS = {
         "error.noSpeech": "Речь не распознана",
         "error.noRecognition": "Нет ответа от распознавания речи",
         "error.noWindow": "Не удалось снять активное окно",
+
+        "tip.attach": "Прикрепить файл",
+        "tip.newChat": "Новый разговор",
+        "tip.history": "История",
+        "tip.posLeft": "Чат у левого края",
+        "tip.posCenter": "Чат по центру",
+        "tip.posRight": "Чат у правого края",
+        "tip.screenshot": "Прикрепить снимок активного окна",
+        "tip.listenOutput": "Распознать звук из динамиков",
+        "tip.mic": "Надиктовать сообщение",
+        "tip.send": "Отправить",
+        "tip.stop": "Остановить агента",
 
         "prompt.oneImage": "Посмотри изображение {paths} — это то, что сейчас на экране.",
         "prompt.manyImages": "Посмотри изображения ({paths}) — это то, что сейчас на экране.",

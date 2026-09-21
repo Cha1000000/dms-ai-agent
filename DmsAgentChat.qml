@@ -68,6 +68,53 @@ Item {
         }
     }
 
+    // --- Tooltips for the icon-only buttons ---
+    // Drawn inside the chat rather than as a layer of their own: the panel is
+    // tall enough that a tip above a toolbar button always fits.
+    property string tipText: ""
+    property real tipCenterX: 0
+    property real tipTopY: 0
+
+    function showTip(item, text) {
+        var point = item.mapToItem(chatRoot, item.width / 2, 0);
+        tipCenterX = point.x;
+        tipTopY = point.y;
+        tipText = text;
+    }
+
+    function hideTip(text) {
+        // Only the tip that is actually showing may hide it: leaving one button
+        // for the next often arrives after the next one has already asked.
+        if (tipText === text) tipText = "";
+    }
+
+    // Dropped inside a button; shows its text after a short hover.
+    component TipArea: Item {
+        id: tip
+
+        property string text: ""
+
+        anchors.fill: parent
+
+        HoverHandler { id: tipHover }
+
+        Timer {
+            id: tipTimer
+            interval: 450
+            onTriggered: if (tipHover.hovered) chatRoot.showTip(tip, tip.text)
+        }
+
+        onEnabledChanged: if (!enabled) chatRoot.hideTip(tip.text)
+
+        Connections {
+            target: tipHover
+            function onHoveredChanged() {
+                if (tipHover.hovered) tipTimer.restart();
+                else { tipTimer.stop(); chatRoot.hideTip(tip.text); }
+            }
+        }
+    }
+
     // Set by the panel: several instances exist (one per bar), only the shown one takes dictation.
     property bool active: true
 
@@ -83,6 +130,7 @@ Item {
 
         property string source: "mic"
         property string idleIcon: "mic"
+        property string tip: ""
 
         readonly property bool active: AgentService.voiceState !== "idle" && AgentService.voiceSource === capture.source
         readonly property bool recording: active && AgentService.voiceState === "recording"
@@ -126,6 +174,8 @@ Item {
                 else AgentService.startVoice(capture.source);
             }
         }
+
+        TipArea { text: capture.tip }
     }
 
     // One of the three position buttons on the toolbar.
@@ -134,6 +184,7 @@ Item {
 
         property string position: "center"
         property string iconName: ""
+        property string tip: ""
 
         readonly property bool current: AgentService.panelPositionFor(chatRoot.screenName) === posButton.position
 
@@ -155,6 +206,8 @@ Item {
             cursorShape: Qt.PointingHandCursor
             onClicked: AgentService.setPanelPosition(chatRoot.screenName, posButton.position)
         }
+
+        TipArea { text: posButton.tip }
     }
 
     Timer {
@@ -304,6 +357,8 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: AgentService.pickFiles()
                     }
+
+                    TipArea { text: AgentService.tr("tip.attach") }
                 }
 
                 TextEdit {
@@ -377,6 +432,7 @@ Item {
                         color: newChatArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
                         DankIcon { anchors.centerIn: parent; name: "add"; color: Theme.surfaceVariantText; size: 16 }
                         MouseArea { id: newChatArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.clearMessages(); AgentService.clearAttachments(false); messageModel.clear(); } }
+                        TipArea { text: AgentService.tr("tip.newChat") }
                     }
 
                     // History
@@ -385,12 +441,13 @@ Item {
                         color: historyArea.containsMouse || historyDropdown.visible ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
                         DankIcon { anchors.centerIn: parent; name: "history"; color: Theme.surfaceVariantText; size: 16 }
                         MouseArea { id: historyArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.loadHistory(); historyDropdown.visible = !historyDropdown.visible; } }
+                        TipArea { text: AgentService.tr("tip.history") }
                     }
 
                     // Where the chat window sits on this monitor.
-                    PositionButton { position: "left";   iconName: "align_horizontal_left" }
-                    PositionButton { position: "center"; iconName: "align_horizontal_center" }
-                    PositionButton { position: "right";  iconName: "align_horizontal_right" }
+                    PositionButton { position: "left";   iconName: "align_horizontal_left";   tip: AgentService.tr("tip.posLeft") }
+                    PositionButton { position: "center"; iconName: "align_horizontal_center"; tip: AgentService.tr("tip.posCenter") }
+                    PositionButton { position: "right";  iconName: "align_horizontal_right";  tip: AgentService.tr("tip.posRight") }
 
                     Item { Layout.fillWidth: true }
 
@@ -429,6 +486,7 @@ Item {
                             color: cancelArea.containsMouse ? Theme.withAlpha(Theme.error || "#EF4444", 0.15) : "transparent"
                             DankIcon { anchors.centerIn: parent; name: "close"; color: Theme.surfaceVariantText; size: 14 }
                             MouseArea { id: cancelArea; anchors.fill: parent; hoverEnabled: true; onClicked: AgentService.cancelRequest() }
+                            TipArea { text: AgentService.tr("tip.stop") }
                         }
                     }
 
@@ -473,6 +531,8 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: AgentService.captureWindow()
                         }
+
+                        TipArea { text: AgentService.tr("tip.screenshot") }
                     }
 
                     // Listens to the speakers instead of the microphone — for
@@ -481,12 +541,14 @@ Item {
                     CaptureButton {
                         source: "output"
                         idleIcon: "hearing"
+                        tip: AgentService.tr("tip.listenOutput")
                         Layout.alignment: Qt.AlignVCenter
                     }
 
                     CaptureButton {
                         source: "mic"
                         idleIcon: "mic"
+                        tip: AgentService.tr("tip.mic")
                         Layout.alignment: Qt.AlignVCenter
                     }
 
@@ -497,9 +559,35 @@ Item {
                         property bool canSend: inputField.text.trim().length > 0
                         DankIcon { anchors.centerIn: parent; name: "arrow_upward"; color: parent.canSend ? Theme.primaryText : Theme.surfaceVariantText; size: 18 }
                         MouseArea { anchors.fill: parent; onClicked: if (parent.canSend) sendCurrentMessage() }
+                        TipArea { text: AgentService.tr("tip.send") }
                     }
                 }
             }
+        }
+    }
+
+    // Above the input card and its dropdowns, so it is never clipped by them.
+    Rectangle {
+        id: tipBubble
+        visible: chatRoot.tipText !== ""
+        z: 50
+
+        width: tipLabel.implicitWidth + 16
+        height: tipLabel.implicitHeight + 10
+        radius: 6
+        color: Theme.surfaceContainerHighest
+        border.width: 1
+        border.color: Theme.withAlpha(Theme.outlineVariant, 0.6)
+
+        x: Math.max(4, Math.min(chatRoot.width - width - 4, chatRoot.tipCenterX - width / 2))
+        y: chatRoot.tipTopY - height - 6
+
+        Text {
+            id: tipLabel
+            anchors.centerIn: parent
+            text: chatRoot.tipText
+            font.pixelSize: 11
+            color: Theme.surfaceText
         }
     }
 
