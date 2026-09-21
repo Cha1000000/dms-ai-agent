@@ -28,6 +28,8 @@ so improvements made there arrive here too.
 | Monitors | chat always opened on the first monitor | a pill on every bar, chat opens where you clicked |
 | Hotkey | manual edit of the niri config | set in plugin settings, opens on the focused monitor |
 | Voice | — | mic button, local Whisper (GPU or CPU), nothing leaves your machine |
+| Replies | plain labels: nothing could be selected or copied | select with the mouse, or copy a whole reply as markdown or as plain text |
+| Chat position | always bottom-centre | left edge, centre or right edge, remembered per monitor |
 | Look | grey border | neon gradient rim, custom icon and label |
 | Sessions | mixed with your other Claude Code sessions in `$HOME` | kept in their own project dir |
 
@@ -115,10 +117,27 @@ model is loaded by a small background server on first use and unloaded after 10 
 the first phrase takes a couple of seconds and the next ones are near-instant. Logs:
 `$XDG_RUNTIME_DIR/dms-agent-voice.log`.
 
+### Copying a reply
+
+Message text is selectable: drag across it and press `Ctrl+C`, `Esc` clears the selection and puts
+the cursor back in the input box. Hovering a bubble also reveals two buttons in its corner — **md**
+copies what the agent actually sent, headings, bold and fenced code intact, and **Text** copies the
+same without any markup. Your own messages get a single button.
+
+### Where the chat opens
+
+The three buttons next to *history* pin the chat to the **left edge**, the **centre** or the
+**right edge** of the monitor. The open window moves as you press them, and the choice is kept for
+each monitor separately — handy when one screen is wide and another is portrait.
+
 ## Updating
 
 Use **Update** in DMS (Settings → Plugins) or re-run `install.sh`. DMS updates plugins with
 `git pull`, and this repository only ever moves forward, so updates are plain fast-forwards.
+
+If the chat still behaves like the old version afterwards, restart the shell —
+`systemctl --user restart dms.service`. Reloading the plugin alone refreshes the bar widget while
+the chat panel stays in memory with the QML it was built from.
 
 ### Upstream sync
 
