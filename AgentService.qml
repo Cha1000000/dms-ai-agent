@@ -60,6 +60,14 @@ Singleton {
     property string voiceError: ""
     signal voiceTextReady(string text)
 
+    // What the current recording listens to:
+    //   "mic"    — the microphone (a named one from the settings, else the system default)
+    //   "output" — whatever is playing on the speakers or headphones, for transcribing
+    //              the other side of a call when your mic cannot hear them
+    property string voiceSource: "mic"
+    // Empty means "whatever the system picked"; otherwise a PipeWire source name.
+    property string voiceDevice: ""
+
     readonly property string voiceScript: decodeURIComponent(String(Qt.resolvedUrl("voice.py")).replace(/^file:\/\//, ""))
     readonly property string keybindScript: decodeURIComponent(String(Qt.resolvedUrl("keybind.sh")).replace(/^file:\/\//, ""))
     readonly property string voiceWav: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/dms-agent-voice.wav"
@@ -71,7 +79,15 @@ Singleton {
         id: recRunner
         Process {
             id: recProc
-            command: ["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16", root.voiceWav]
+            // "stream.capture.sink=true" attaches the stream to the monitor of the
+            // *current* output, so it follows a switch from speakers to headphones
+            // on its own — no need to look the device up.
+            command: {
+                var cmd = ["pw-record"];
+                if (root.voiceSource === "output") cmd.push("-P", "stream.capture.sink=true");
+                else if (root.voiceDevice !== "") cmd.push("--target", root.voiceDevice);
+                return cmd.concat(["--rate", "16000", "--channels", "1", "--format", "s16", root.voiceWav]);
+            }
             stderr: StdioCollector {}
             onExited: {
                 if (root._recProcess === recProc) root._onRecordingExited();
@@ -90,8 +106,9 @@ Singleton {
         }
     }
 
-    function startVoice() {
+    function startVoice(source) {
         if (busy || voiceState !== "idle") return;
+        voiceSource = source === "output" ? "output" : "mic";
         voiceError = "";
         voiceSeconds = 0;
         _recCancelled = false;
@@ -117,7 +134,7 @@ Singleton {
         _recProcess = null;
         if (_recCancelled || voiceState === "recording") {
             // Cancelled, or pw-record died on its own (no microphone, PipeWire down).
-            if (!_recCancelled) voiceError = "Microphone unavailable";
+            if (!_recCancelled) voiceError = voiceSource === "output" ? "No audio output to capture" : "Microphone unavailable";
             voiceState = "idle";
             runQuietExit("rm -f " + shellQuote(voiceWav), function() {});
             return;

@@ -163,6 +163,14 @@ PluginSettings {
                 }
 
                 StringSetting {
+                    settingKey: "voiceDevice"
+                    label: "Microphone"
+                    description: "PipeWire source name for dictation; empty uses the system default. List them with: pactl list short sources"
+                    placeholder: "system default"
+                    defaultValue: ""
+                }
+
+                StringSetting {
                     settingKey: "voiceVenv"
                     label: "Whisper venv"
                     description: "Python venv with faster-whisper (install.sh creates the default one)"

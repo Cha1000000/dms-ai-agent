@@ -28,6 +28,7 @@ so improvements made there arrive here too.
 | Monitors | chat always opened on the first monitor | a pill on every bar, chat opens where you clicked |
 | Hotkey | manual edit of the niri config | set in plugin settings, opens on the focused monitor |
 | Voice | — | mic button, local Whisper (GPU or CPU), nothing leaves your machine |
+| Transcribing others | — | a second button listens to the speakers, for the far side of a call your mic cannot hear |
 | Replies | plain labels: nothing could be selected or copied | select with the mouse, or copy a whole reply as markdown or as plain text |
 | Chat position | always bottom-centre | left edge, centre or right edge, remembered per monitor |
 | Look | grey border | neon gradient rim, custom icon and label |
@@ -90,6 +91,7 @@ Then, in DMS:
 | Pill Label | `Jarvis` | text next to the icon in the bar |
 | Chat Hotkey (niri) | `Mod+Space` | any niri key combo; empty removes it |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
+| Microphone | system default | a PipeWire source name to dictate into a fixed mic; `pactl list short sources` lists them |
 | Language | `auto` | or a fixed code (`en`, `ru`, `de`, …) — more accurate for short phrases |
 | Whisper venv | installer's | path to a venv with `faster-whisper` |
 
@@ -116,6 +118,20 @@ Speech is recognized locally by [faster-whisper](https://github.com/SYSTRAN/fast
 model is loaded by a small background server on first use and unloaded after 10 idle minutes, so
 the first phrase takes a couple of seconds and the next ones are near-instant. Logs:
 `$XDG_RUNTIME_DIR/dms-agent-voice.log`.
+
+### Transcribing what you hear
+
+The button left of the mic records the **output** instead of the microphone —
+whatever is playing on your speakers or headphones — and drops the transcript into the
+input box the same way. It is meant for the other side of a call: in headphones your
+microphone cannot hear them at all, and over speakers it hears them badly.
+
+It attaches to the monitor of the current output, so switching from speakers to
+headphones needs no configuration. Two caveats: everything playing is captured, notifications
+and music included, and several speakers come out as one undivided block of text.
+Your own voice is not in there — it goes to the microphone, not to the output.
+
+Both buttons drive the same single recording, so while one is running the other is dimmed.
 
 ### Copying a reply
 

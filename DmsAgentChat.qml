@@ -74,6 +74,60 @@ Item {
     // Which monitor this chat belongs to — the position buttons are per-monitor.
     property string screenName: ""
 
+    // Mic button and its twin that listens to the speakers. Both drive the same
+    // single recording, so only the one that started it lights up; the other is
+    // dimmed meanwhile — two recordings at once would have nothing to transcribe
+    // into, and there is one Whisper anyway.
+    component CaptureButton: Rectangle {
+        id: capture
+
+        property string source: "mic"
+        property string idleIcon: "mic"
+
+        readonly property bool active: AgentService.voiceState !== "idle" && AgentService.voiceSource === capture.source
+        readonly property bool recording: active && AgentService.voiceState === "recording"
+        readonly property bool transcribing: active && AgentService.voiceState === "transcribing"
+        readonly property bool otherBusy: AgentService.voiceState !== "idle" && !active
+
+        visible: !AgentService.busy
+        width: 32; height: 32; radius: 16
+        opacity: otherBusy ? 0.35 : 1
+        color: recording ? Theme.withAlpha("#EF4444", 0.18)
+            : (captureArea.containsMouse && !otherBusy ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
+
+        DankIcon {
+            id: captureIcon
+            anchors.centerIn: parent
+            name: capture.transcribing ? "progress_activity" : (capture.recording ? "stop" : capture.idleIcon)
+            color: capture.recording ? "#EF4444" : Theme.surfaceVariantText
+            size: 18
+            RotationAnimation on rotation {
+                running: capture.transcribing; loops: Animation.Infinite
+                from: 0; to: 360; duration: 900
+                onRunningChanged: if (!running) captureIcon.rotation = 0
+            }
+        }
+
+        SequentialAnimation on opacity {
+            running: capture.recording; loops: Animation.Infinite
+            NumberAnimation { to: 0.55; duration: 700; easing.type: Easing.InOutSine }
+            NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
+            onRunningChanged: if (!running) capture.opacity = capture.otherBusy ? 0.35 : 1
+        }
+
+        MouseArea {
+            id: captureArea
+            anchors.fill: parent
+            hoverEnabled: true
+            enabled: !capture.transcribing && !capture.otherBusy
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                if (capture.recording) AgentService.stopVoice();
+                else AgentService.startVoice(capture.source);
+            }
+        }
+    }
+
     // One of the three position buttons on the toolbar.
     component PositionButton: Rectangle {
         id: posButton
@@ -274,44 +328,19 @@ Item {
                         Layout.alignment: Qt.AlignVCenter
                     }
 
-                    Rectangle {
-                        id: micButton
-                        visible: !AgentService.busy
-                        width: 32; height: 32; radius: 16
+                    // Listens to the speakers instead of the microphone — for
+                    // transcribing the other side of a call when headphones keep
+                    // them out of the mic.
+                    CaptureButton {
+                        source: "output"
+                        idleIcon: "hearing"
                         Layout.alignment: Qt.AlignVCenter
-                        readonly property bool recording: AgentService.voiceState === "recording"
-                        readonly property bool transcribing: AgentService.voiceState === "transcribing"
-                        color: recording ? Theme.withAlpha("#EF4444", 0.18)
-                            : (micArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
+                    }
 
-                        DankIcon {
-                            id: micIcon
-                            anchors.centerIn: parent
-                            name: micButton.transcribing ? "progress_activity" : (micButton.recording ? "stop" : "mic")
-                            color: micButton.recording ? "#EF4444" : Theme.surfaceVariantText
-                            size: 18
-                            RotationAnimation on rotation {
-                                running: micButton.transcribing; loops: Animation.Infinite
-                                from: 0; to: 360; duration: 900
-                                onRunningChanged: if (!running) micIcon.rotation = 0
-                            }
-                        }
-
-                        SequentialAnimation on opacity {
-                            running: micButton.recording; loops: Animation.Infinite
-                            NumberAnimation { to: 0.55; duration: 700; easing.type: Easing.InOutSine }
-                            NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
-                            onRunningChanged: if (!running) micButton.opacity = 1
-                        }
-
-                        MouseArea {
-                            id: micArea; anchors.fill: parent; hoverEnabled: true
-                            enabled: !micButton.transcribing
-                            onClicked: {
-                                if (micButton.recording) AgentService.stopVoice();
-                                else AgentService.startVoice();
-                            }
-                        }
+                    CaptureButton {
+                        source: "mic"
+                        idleIcon: "mic"
+                        Layout.alignment: Qt.AlignVCenter
                     }
 
                     Rectangle {
