@@ -35,6 +35,7 @@ so improvements made there arrive here too.
 | Chat position | always bottom-centre | left edge, centre or right edge, remembered per monitor |
 | Look | grey border | neon gradient rim, custom icon and label |
 | Sessions | mixed with your other Claude Code sessions in `$HOME` | kept in their own project dir |
+| Staying current | press Update when you remember to | updates itself once per boot, local edits untouched |
 
 <p align="center">
   <img src="assets/screenshot-progress.png" alt="Agent running a tool" width="49%">
@@ -93,6 +94,7 @@ Then, in DMS:
 | Pill Label | `Jarvis` | text next to the icon in the bar |
 | Chat Hotkey (niri) | `Mod+Space` | any niri key combo; empty removes it |
 | Message Text Size | `13px` | font size in the chat bubbles, 11–22 |
+| Auto-update | on | update from this repository once per boot and restart the shell to apply it |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
 | Microphone | System default | dropdown of the capture devices PipeWire knows, under the names the audio settings show |
 | Language | `auto` | speech recognition **and** interface language; a fixed code is also more accurate for short phrases |
@@ -205,6 +207,13 @@ so nothing looks frozen. It never touches a working copy with local edits or loc
 commits — those are left exactly as they are and the update is skipped. Turn it off
 in the plugin settings if you would rather update by hand; be aware that leaving it on
 means code from this repository is applied without asking.
+
+The very first update after installing a version older than this one still has to be
+done by hand — a plugin cannot update itself with code it does not yet have. Everything
+after that is automatic.
+
+While you are editing the plugin in place, the update is skipped rather than fought
+over: commit and push, and it resumes.
 
 If the chat still behaves like the old version afterwards, restart the shell —
 `systemctl --user restart dms.service`. Reloading the plugin alone refreshes the bar widget while
