@@ -154,6 +154,47 @@ Singleton {
         });
     }
 
+    // --- Screenshots attached to the next message ---
+    // The agent reads images with its own file-reading tool, so an attachment is
+    // just a path handed to it in the prompt. Files live in the runtime dir: they
+    // are worth nothing after a reboot, and this keeps them out of ~/Pictures.
+    property var pendingScreenshots: []
+    property string screenshotError: ""
+
+    readonly property string screenshotScript: decodeURIComponent(String(Qt.resolvedUrl("screenshot.sh")).replace(/^file:\/\//, ""))
+    readonly property string screenshotDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp")
+
+    function captureWindow() {
+        var path = screenshotDir + "/dms-agent-shot-" + Date.now() + ".png";
+        screenshotError = "";
+        run(shellQuote(screenshotScript) + " " + shellQuote(path) + " 2>&1", function(output) {
+            if (String(output).trim() !== "ok") {
+                // The chat holds keyboard focus but not window focus, so this only
+                // happens when there is genuinely no window to shoot.
+                screenshotError = "Could not capture the focused window";
+                return;
+            }
+            pendingScreenshots = pendingScreenshots.concat([path]);
+        });
+    }
+
+    function removeScreenshot(path) {
+        pendingScreenshots = pendingScreenshots.filter(function(p) { return p !== path; });
+        runQuietExit("rm -f " + shellQuote(path), function() {});
+    }
+
+    function clearScreenshots(keepFiles) {
+        if (!keepFiles) {
+            for (var i = 0; i < pendingScreenshots.length; i++)
+                runQuietExit("rm -f " + shellQuote(pendingScreenshots[i]), function() {});
+        }
+        pendingScreenshots = [];
+    }
+
+    function openScreenshot(path) {
+        runQuietExit("xdg-open " + shellQuote(path) + " >/dev/null 2>&1 &", function() {});
+    }
+
     // --- Hotkey ---
     // niri binds live in the compositor config, so the setting is written to a
     // small include file by keybind.sh. Applied only when the setting was

@@ -163,6 +163,12 @@ Item {
         onTriggered: AgentService.voiceError = ""
     }
 
+    Timer {
+        interval: 5000
+        running: AgentService.screenshotError !== ""
+        onTriggered: AgentService.screenshotError = ""
+    }
+
     // --- Input Card (anchored to bottom) ---
     Rectangle {
         id: inputCard
@@ -181,6 +187,69 @@ Item {
 
         ColumnLayout {
             id: inputCol; width: parent.width; spacing: 0
+
+            // Screenshots waiting to go with the next message. Click one to open
+            // it full size, the cross drops it.
+            Flow {
+                Layout.fillWidth: true
+                Layout.leftMargin: 14; Layout.rightMargin: 14
+                Layout.topMargin: AgentService.pendingScreenshots.length > 0 ? 12 : 0
+                spacing: 8
+                visible: AgentService.pendingScreenshots.length > 0
+
+                Repeater {
+                    model: AgentService.pendingScreenshots
+
+                    Rectangle {
+                        required property string modelData
+
+                        width: 84; height: 58; radius: 8
+                        color: Theme.surfaceVariant
+                        border.width: 1
+                        border.color: shotArea.containsMouse ? Theme.primary : Theme.withAlpha(Theme.outlineVariant, 0.5)
+
+                        clip: true
+
+                        Image {
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            source: "file://" + parent.modelData
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            cache: false
+                        }
+
+                        MouseArea {
+                            id: shotArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: AgentService.openScreenshot(parent.modelData)
+                        }
+
+                        Rectangle {
+                            anchors.top: parent.top; anchors.right: parent.right
+                            anchors.margins: 2
+                            width: 16; height: 16; radius: 8
+                            color: dropArea.containsMouse ? Theme.error || "#EF4444"
+                                                          : Theme.withAlpha(Theme.shadow || "#000000", 0.6)
+
+                            DankIcon {
+                                anchors.centerIn: parent
+                                name: "close"; size: 11; color: "#FFFFFF"
+                            }
+
+                            MouseArea {
+                                id: dropArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: AgentService.removeScreenshot(parent.parent.modelData)
+                            }
+                        }
+                    }
+                }
+            }
 
             Item {
                 Layout.fillWidth: true
@@ -256,7 +325,7 @@ Item {
                         width: 26; height: 26; radius: 13
                         color: newChatArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
                         DankIcon { anchors.centerIn: parent; name: "add"; color: Theme.surfaceVariantText; size: 16 }
-                        MouseArea { id: newChatArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.clearMessages(); messageModel.clear(); } }
+                        MouseArea { id: newChatArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.clearMessages(); AgentService.clearScreenshots(false); messageModel.clear(); } }
                     }
 
                     // History
@@ -314,8 +383,8 @@ Item {
 
                     // Voice input: error, recording timer, mic button
                     Text {
-                        visible: AgentService.voiceError !== "" && !AgentService.busy
-                        text: AgentService.voiceError
+                        visible: (AgentService.voiceError !== "" || AgentService.screenshotError !== "") && !AgentService.busy
+                        text: AgentService.voiceError || AgentService.screenshotError
                         color: Theme.error || "#EF4444"; font.pixelSize: 10
                         elide: Text.ElideRight; Layout.maximumWidth: 240
                         Layout.alignment: Qt.AlignVCenter
@@ -326,6 +395,33 @@ Item {
                         text: Math.floor(AgentService.voiceSeconds / 60) + ":" + ("0" + AgentService.voiceSeconds % 60).slice(-2)
                         color: "#EF4444"; font.pixelSize: 11; font.family: "monospace"
                         Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    // Attaches a shot of the focused window to the next message,
+                    // so the agent can see what the other side is showing.
+                    Rectangle {
+                        id: shotButton
+                        visible: !AgentService.busy
+                        width: 32; height: 32; radius: 16
+                        Layout.alignment: Qt.AlignVCenter
+                        readonly property bool armed: AgentService.pendingScreenshots.length > 0
+                        color: armed ? Theme.withAlpha(Theme.primary, 0.15)
+                            : (shotBtnArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
+
+                        DankIcon {
+                            anchors.centerIn: parent
+                            name: "photo_camera"
+                            color: shotButton.armed ? Theme.primary : Theme.surfaceVariantText
+                            size: 18
+                        }
+
+                        MouseArea {
+                            id: shotBtnArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: AgentService.captureWindow()
+                        }
                     }
 
                     // Listens to the speakers instead of the microphone — for
@@ -647,9 +743,23 @@ Item {
 
     function sendCurrentMessage() {
         var text = inputField.text.trim();
-        if (!text || AgentService.busy) return;
+        var shots = AgentService.pendingScreenshots;
+        if ((!text && shots.length === 0) || AgentService.busy) return;
+
+        // Attachments reach the agent as paths it opens itself. The files are
+        // left on disk — it reads them after this returns — and cleaned up with
+        // the next capture or when the chat is cleared.
+        var sent = text;
+        if (shots.length > 0) {
+            var intro = shots.length === 1
+                ? "Посмотри изображение " + shots[0] + " — это то, что сейчас на экране."
+                : "Посмотри изображения (" + shots.join(", ") + ") — это то, что сейчас на экране.";
+            sent = intro + (text ? "\n\n" + text : "");
+        }
+
         inputField.text = "";
-        AgentService.sendMessage(text);
+        AgentService.clearScreenshots(true);
+        AgentService.sendMessage(sent);
     }
 
     function loadMessages() {

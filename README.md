@@ -29,6 +29,7 @@ so improvements made there arrive here too.
 | Hotkey | manual edit of the niri config | set in plugin settings, opens on the focused monitor |
 | Voice | — | mic button, local Whisper (GPU or CPU), nothing leaves your machine |
 | Transcribing others | — | a second button listens to the speakers, for the far side of a call your mic cannot hear |
+| Showing the agent your screen | — | attach shots of the focused window to a message; the agent reads them |
 | Replies | plain labels: nothing could be selected or copied | select with the mouse, or copy a whole reply as markdown or as plain text |
 | Chat position | always bottom-centre | left edge, centre or right edge, remembered per monitor |
 | Look | grey border | neon gradient rim, custom icon and label |
@@ -133,6 +134,22 @@ and music included, and several speakers come out as one undivided block of text
 Your own voice is not in there — it goes to the microphone, not to the output.
 
 Both buttons drive the same single recording, so while one is running the other is dimmed.
+
+### Showing the agent your screen
+
+The camera button shoots the focused window and attaches it to the message you are
+about to send — useful when someone is walking you through code on a call. Attach as
+many as you like; each appears as a thumbnail above the input box. Click a thumbnail to
+open it full size, or its cross to drop it.
+
+The chat is a layer, not a window, so it never takes focus away and never ends up in
+the shot. niri always copies a screenshot to the clipboard, which is where the file is
+taken from — so shots also stay in your clipboard history, and nothing is written to
+your pictures folder. Attachments live in the runtime directory and disappear on reboot.
+
+Two things worth knowing: the image is sent to the model like any other request, and it
+is scaled down to roughly 1568px on its long side — small type in a 4K window may not
+survive that, so a smaller window reads better than a full screen.
 
 ### Copying a reply
 
