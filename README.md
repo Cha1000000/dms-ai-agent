@@ -144,8 +144,10 @@ system does. Pick one file or several; each appears as a card above the input bo
 images as thumbnails and everything else as a name. Click a card to open the file,
 the cross to drop it.
 
-Dropping a card never deletes the file itself — only screenshots this plugin took
-are its own to remove.
+Clicking a card opens the file the way the desktop would: with whatever is registered
+for its type, and with the system's "open with" chooser when nothing is. Dropping a
+card never deletes the file itself — only screenshots this plugin took are its own
+to remove.
 
 The portal is used where it exists, with zenity and kdialog behind it.
 

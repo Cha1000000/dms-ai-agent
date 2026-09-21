@@ -182,6 +182,7 @@ Singleton {
 
     readonly property string screenshotScript: decodeURIComponent(String(Qt.resolvedUrl("screenshot.sh")).replace(/^file:\/\//, ""))
     readonly property string pickScript: decodeURIComponent(String(Qt.resolvedUrl("pickfiles.py")).replace(/^file:\/\//, ""))
+    readonly property string openScript: decodeURIComponent(String(Qt.resolvedUrl("openfile.py")).replace(/^file:\/\//, ""))
     readonly property string screenshotDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp")
 
     function captureWindow() {
@@ -236,7 +237,9 @@ Singleton {
     }
 
     function openAttachment(path) {
-        runQuietExit(shellQuote(screenshotScript) + " --open " + shellQuote(path), function() {});
+        // Opens with whatever the desktop registered for that file's type, and
+        // offers the "open with" chooser when the type has no handler.
+        runQuietExit("python3 " + shellQuote(openScript) + " " + shellQuote(path), function() {});
     }
 
     // --- Hotkey ---
