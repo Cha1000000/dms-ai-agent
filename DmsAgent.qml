@@ -79,6 +79,8 @@ PluginComponent {
         AgentService.voiceLanguage = pluginData.voiceLanguage || "auto";
         AgentService.voiceVenv = pluginData.voiceVenv || "";
         AgentService.voiceDevice = pluginData.voiceDevice || "";
+        AgentService.autoUpdate = pluginData.autoUpdate !== false;
+        AgentService.checkForUpdates();
         if (pluginData.hotkey !== undefined) AgentService.applyHotkey(pluginData.hotkey);
     }
 

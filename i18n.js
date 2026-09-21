@@ -42,6 +42,10 @@ var STRINGS = {
         "error.noRecognition": "No response from speech recognition",
         "error.noWindow": "Could not capture the focused window",
 
+        "update.done": "Jarvis updated",
+        "update.restarting": "Restarting the panel",
+        "update.manual": "Update ready — restart the shell to apply it",
+
         "tip.attach": "Attach a file",
         "tip.newChat": "New conversation",
         "tip.history": "History",
@@ -96,6 +100,10 @@ var STRINGS = {
         "error.noSpeech": "Речь не распознана",
         "error.noRecognition": "Нет ответа от распознавания речи",
         "error.noWindow": "Не удалось снять активное окно",
+
+        "update.done": "Jarvis обновлён",
+        "update.restarting": "Перезапускаю панель",
+        "update.manual": "Обновление готово — перезапустите оболочку, чтобы применить",
 
         "tip.attach": "Прикрепить файл",
         "tip.newChat": "Новый разговор",

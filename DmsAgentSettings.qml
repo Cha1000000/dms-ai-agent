@@ -134,6 +134,13 @@ PluginSettings {
                     unit: "px"
                 }
 
+                ToggleSetting {
+                    settingKey: "autoUpdate"
+                    label: "Auto-update"
+                    description: "Pull new versions from the plugin's repository once per boot and restart the shell to apply them. Local edits are never touched."
+                    defaultValue: true
+                }
+
                 StringSetting {
                     settingKey: "pillLabel"
                     label: "Pill Label"

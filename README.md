@@ -199,6 +199,13 @@ each monitor separately — handy when one screen is wide and another is portrai
 Use **Update** in DMS (Settings → Plugins) or re-run `install.sh`. DMS updates plugins with
 `git pull`, and this repository only ever moves forward, so updates are plain fast-forwards.
 
+**Auto-update** is on by default: once per boot the plugin fast-forwards itself to
+whatever is in this repository and restarts the shell to apply it, with a notification
+so nothing looks frozen. It never touches a working copy with local edits or local
+commits — those are left exactly as they are and the update is skipped. Turn it off
+in the plugin settings if you would rather update by hand; be aware that leaving it on
+means code from this repository is applied without asking.
+
 If the chat still behaves like the old version afterwards, restart the shell —
 `systemctl --user restart dms.service`. Reloading the plugin alone refreshes the bar widget while
 the chat panel stays in memory with the QML it was built from.
