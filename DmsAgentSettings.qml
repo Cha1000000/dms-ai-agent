@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell.Services.Pipewire
 import qs.Common
 import qs.Widgets
 import qs.Modules.Plugins
@@ -7,6 +8,27 @@ import qs.Modules.Plugins
 PluginSettings {
     id: root
     pluginId: "dmsAgent"
+
+    // Microphones offered in the dropdown. Sinks are outputs and streams are
+    // individual apps, so both are filtered out; what is left are capture devices.
+    // The label is what the audio settings show, the stored value is the node
+    // name, which is what pw-record takes as --target.
+    readonly property var micNodes: Pipewire.nodes.values.filter(n => n && n.audio && !n.isSink && !n.isStream)
+
+    readonly property var micOptions: {
+        const list = [{ label: "System default", value: "" }];
+        for (const node of micNodes)
+            list.push({ label: micLabel(node), value: node.name });
+        return list;
+    }
+
+    function micLabel(node) {
+        const props = node.properties || {};
+        return props["node.description"] || node.description || node.nickname || node.name;
+    }
+
+    // Properties of a node are only populated while something holds it.
+    PwObjectTracker { objects: root.micNodes }
 
     // Plain Columns, not ColumnLayout: DMS setting widgets size themselves with
     // width: parent.width, which a Layout overrides with their tiny implicit width.
@@ -162,12 +184,12 @@ PluginSettings {
                     defaultValue: "auto"
                 }
 
-                StringSetting {
+                SelectionSetting {
                     settingKey: "voiceDevice"
                     label: "Microphone"
-                    description: "PipeWire source name for dictation; empty uses the system default. List them with: pactl list short sources"
-                    placeholder: "system default"
+                    description: "Which microphone dictation records from. The stored value is the PipeWire node name, so it survives renaming the list."
                     defaultValue: ""
+                    options: micOptions
                 }
 
                 StringSetting {

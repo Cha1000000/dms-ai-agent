@@ -91,7 +91,7 @@ Then, in DMS:
 | Pill Label | `Jarvis` | text next to the icon in the bar |
 | Chat Hotkey (niri) | `Mod+Space` | any niri key combo; empty removes it |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
-| Microphone | system default | a PipeWire source name to dictate into a fixed mic; `pactl list short sources` lists them |
+| Microphone | System default | dropdown of the capture devices PipeWire knows, under the names the audio settings show |
 | Language | `auto` | or a fixed code (`en`, `ru`, `de`, …) — more accurate for short phrases |
 | Whisper venv | installer's | path to a venv with `faster-whisper` |
 
