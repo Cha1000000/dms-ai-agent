@@ -35,6 +35,7 @@ Singleton {
 
     // Set from the plugin settings (DmsAgent.qml).
     property int maxTokens: 1024
+    property int bubbleFontSize: 13
     property string pillLabel: "Jarvis"
     property string voiceModel: "auto"
     property string voiceLanguage: "auto"

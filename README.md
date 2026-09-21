@@ -90,6 +90,7 @@ Then, in DMS:
 | System Prompt | built-in | your own instructions for the agent |
 | Pill Label | `Jarvis` | text next to the icon in the bar |
 | Chat Hotkey (niri) | `Mod+Space` | any niri key combo; empty removes it |
+| Message Text Size | `13px` | font size in the chat bubbles, 11–22 |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
 | Microphone | System default | dropdown of the capture devices PipeWire knows, under the names the audio settings show |
 | Language | `auto` | or a fixed code (`en`, `ru`, `de`, …) — more accurate for short phrases |

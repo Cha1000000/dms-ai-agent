@@ -530,7 +530,7 @@ Item {
                 id: uMetric
                 visible: false
                 text: content
-                font.pixelSize: 13
+                font.pixelSize: AgentService.bubbleFontSize
             }
 
             Rectangle {
@@ -548,7 +548,7 @@ Item {
                     text: content
                     wrapMode: TextEdit.Wrap
                     color: Theme.primaryText
-                    font.pixelSize: 13
+                    font.pixelSize: AgentService.bubbleFontSize
                     readOnly: true
                     selectByMouse: true
                     persistentSelection: true
@@ -588,7 +588,7 @@ Item {
                 visible: false
                 text: Md.markdownToHtml(content)
                 textFormat: Text.RichText
-                font.pixelSize: 13
+                font.pixelSize: AgentService.bubbleFontSize
             }
 
             Rectangle {
@@ -607,7 +607,7 @@ Item {
                     textFormat: TextEdit.RichText
                     wrapMode: TextEdit.Wrap
                     color: Theme.surfaceText
-                    font.pixelSize: 13
+                    font.pixelSize: AgentService.bubbleFontSize
                     readOnly: true
                     selectByMouse: true
                     persistentSelection: true

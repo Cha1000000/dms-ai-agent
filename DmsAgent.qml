@@ -71,6 +71,7 @@ PluginComponent {
         if (!pluginData) return;
         AgentService.claudeModel = pluginData.claudeModel || "haiku";
         AgentService.maxTokens = parseInt(pluginData.maxTokens) || 1024;
+        AgentService.bubbleFontSize = parseInt(pluginData.bubbleFontSize) || 13;
         AgentService.extendedThinking = pluginData.extendedThinking === true;
         if (pluginData.systemPrompt) AgentService.systemPrompt = pluginData.systemPrompt;
         AgentService.pillLabel = pluginData.pillLabel || "Jarvis";

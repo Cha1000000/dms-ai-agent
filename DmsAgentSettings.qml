@@ -124,6 +124,16 @@ PluginSettings {
                     color: Theme.surfaceText
                 }
 
+                SliderSetting {
+                    settingKey: "bubbleFontSize"
+                    label: "Message Text Size"
+                    description: "Font size in the chat bubbles. Larger is easier to read at a glance."
+                    defaultValue: 13
+                    minimum: 11
+                    maximum: 22
+                    unit: "px"
+                }
+
                 StringSetting {
                     settingKey: "pillLabel"
                     label: "Pill Label"
