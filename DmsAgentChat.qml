@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
+import Quickshell
 import qs.Common
 import qs.Widgets
 import "markdown2html.js" as Md
@@ -9,6 +10,63 @@ Item {
     id: chatRoot
 
     signal escapePressed()
+
+    // Copying a bubble takes the focus away from the input field, so it is handed
+    // straight back — otherwise typing silently goes nowhere after a copy.
+    function copyToClipboard(text) {
+        if (!text) return;
+        Quickshell.clipboardText = text;
+        inputField.forceActiveFocus();
+    }
+
+    // Small chip shown in the corner of a bubble on hover.
+    component CopyChip: Rectangle {
+        id: chip
+
+        property string label: ""
+        property color fg: Theme.surfaceVariantText
+        property color bg: Theme.withAlpha(Theme.surfaceVariant, 0.6)
+        property bool copied: false
+
+        signal requested()
+
+        width: chipRow.width + 12
+        height: 18
+        radius: 9
+        color: chipArea.containsMouse ? Theme.withAlpha(chip.bg, 1.0) : chip.bg
+        border.width: 1
+        border.color: Theme.withAlpha(chip.fg, 0.25)
+
+        Timer { id: chipTimer; interval: 1200; onTriggered: chip.copied = false }
+
+        Row {
+            id: chipRow
+            anchors.centerIn: parent
+            spacing: 3
+
+            DankIcon {
+                name: chip.copied ? "check" : "content_copy"
+                size: 11
+                color: chip.copied ? Theme.primary : chip.fg
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                text: chip.copied ? "copied" : chip.label
+                font.pixelSize: 9
+                color: chip.copied ? Theme.primary : chip.fg
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        MouseArea {
+            id: chipArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { chip.requested(); chip.copied = true; chipTimer.restart(); }
+        }
+    }
 
     // Set by the panel: several instances exist (one per bar), only the shown one takes dictation.
     property bool active: true
@@ -388,15 +446,68 @@ Item {
         }
     }
 
+    // Bubbles use TextEdit rather than Text: only TextEdit can be selected with
+    // the mouse. It is read-only, so it behaves like a label that happens to be
+    // selectable. The natural width is measured by a hidden Text alongside it —
+    // asking TextEdit for its implicitWidth while its own width comes from the
+    // bubble would be a binding loop.
+    // The strip at the bottom of each bubble is reserved whether the copy chips
+    // are showing or not, so bubbles do not jump when the pointer enters them.
+    readonly property int bubbleActionStrip: 22
+
     Component {
         id: userComp
         Item {
             height: uRect.height
+
+            Text {
+                id: uMetric
+                visible: false
+                text: content
+                font.pixelSize: 13
+            }
+
             Rectangle {
                 id: uRect; anchors.right: parent.right
-                width: Math.min(parent.width * 0.8, uTxt.implicitWidth + 28)
-                height: uTxt.implicitHeight + 20; radius: 16; color: Theme.primary
-                Text { id: uTxt; anchors.fill: parent; anchors.margins: 10; anchors.leftMargin: 14; anchors.rightMargin: 14; text: content; wrapMode: Text.Wrap; color: Theme.primaryText; font.pixelSize: 13; lineHeight: 1.3 }
+                width: Math.min(parent.width * 0.8, uMetric.implicitWidth + 28)
+                height: uTxt.implicitHeight + 20 + chatRoot.bubbleActionStrip
+                radius: 16; color: Theme.primary
+
+                HoverHandler { id: uHover }
+
+                TextEdit {
+                    id: uTxt
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                    anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.topMargin: 10
+                    text: content
+                    wrapMode: TextEdit.Wrap
+                    color: Theme.primaryText
+                    font.pixelSize: 13
+                    readOnly: true
+                    selectByMouse: true
+                    persistentSelection: true
+                    selectionColor: Theme.withAlpha(Theme.primaryText, 0.3)
+                    selectedTextColor: Theme.primaryText
+
+                    Keys.onEscapePressed: function(event) {
+                        event.accepted = true;
+                        uTxt.deselect();
+                        inputField.forceActiveFocus();
+                    }
+                }
+
+                CopyChip {
+                    anchors.right: parent.right; anchors.rightMargin: 12
+                    anchors.bottom: parent.bottom; anchors.bottomMargin: 4
+                    opacity: uHover.hovered ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
+
+                    label: "Text"
+                    fg: Theme.primaryText
+                    bg: Theme.withAlpha(Theme.primaryText, 0.15)
+                    onRequested: chatRoot.copyToClipboard(content)
+                }
             }
         }
     }
@@ -405,11 +516,65 @@ Item {
         id: assistantComp
         Item {
             height: aRect.height
+
+            Text {
+                id: aMetric
+                visible: false
+                text: Md.markdownToHtml(content)
+                textFormat: Text.RichText
+                font.pixelSize: 13
+            }
+
             Rectangle {
                 id: aRect; anchors.left: parent.left
-                width: Math.min(parent.width * 0.85, aTxt.implicitWidth + 28)
-                height: aTxt.implicitHeight + 20; radius: 16; color: Theme.surfaceContainer
-                Text { id: aTxt; anchors.fill: parent; anchors.margins: 10; anchors.leftMargin: 14; anchors.rightMargin: 14; text: Md.markdownToHtml(content); textFormat: Text.RichText; wrapMode: Text.Wrap; color: Theme.surfaceText; font.pixelSize: 13; lineHeight: 1.4 }
+                width: Math.min(parent.width * 0.85, aMetric.implicitWidth + 28)
+                height: aTxt.implicitHeight + 20 + chatRoot.bubbleActionStrip
+                radius: 16; color: Theme.surfaceContainer
+
+                HoverHandler { id: aHover }
+
+                TextEdit {
+                    id: aTxt
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                    anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.topMargin: 10
+                    text: Md.markdownToHtml(content)
+                    textFormat: TextEdit.RichText
+                    wrapMode: TextEdit.Wrap
+                    color: Theme.surfaceText
+                    font.pixelSize: 13
+                    readOnly: true
+                    selectByMouse: true
+                    persistentSelection: true
+                    selectionColor: Theme.primary
+                    selectedTextColor: Theme.primaryText
+
+                    Keys.onEscapePressed: function(event) {
+                        event.accepted = true;
+                        aTxt.deselect();
+                        inputField.forceActiveFocus();
+                    }
+                }
+
+                Row {
+                    anchors.right: parent.right; anchors.rightMargin: 12
+                    anchors.bottom: parent.bottom; anchors.bottomMargin: 4
+                    spacing: 6
+                    opacity: aHover.hovered ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
+
+                    // "md" keeps what the agent actually sent — headings, bold,
+                    // fenced code. "Text" is what the bubble shows, without markup.
+                    CopyChip {
+                        label: "md"
+                        onRequested: chatRoot.copyToClipboard(content)
+                    }
+
+                    CopyChip {
+                        label: "Text"
+                        onRequested: chatRoot.copyToClipboard(aTxt.getText(0, aTxt.length))
+                    }
+                }
             }
         }
     }

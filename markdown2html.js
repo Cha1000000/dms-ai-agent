@@ -100,7 +100,9 @@ function markdownToHtml(text) {
     // Remove <br/> tags immediately before block elements
     html = html.replace(/<br\/>\s*<pre>/g, '<pre>');
     html = html.replace(/<br\/>\s*<ul>/g, '<ul>');
-    html = html.replace(/<br\/>\s*<h[1-6]>/g, '<h$1>');
+    // The heading level has to be captured, otherwise the replacement inserts a
+    // literal "<h$1>" and the heading is lost.
+    html = html.replace(/<br\/>\s*<h([1-6])>/g, '<h$1>');
 
     // Remove empty paragraphs
     html = html.replace(/<p>\s*<\/p>/g, '');
@@ -112,6 +114,12 @@ function markdownToHtml(text) {
 
     // Remove leading/trailing whitespace
     html = html.trim();
+
+    // Line spacing. Bubbles render through TextEdit so the text can be selected,
+    // and TextEdit has no lineHeight property the way Text does — so the spacing
+    // is set here instead, in CSS. Qt's rich text only honours line-height on
+    // block tags, hence the explicit list; <pre> is left alone so code stays tight.
+    html = html.replace(/<(p|li|h1|h2|h3)>/g, '<$1 style="line-height:140%">');
 
     return html;
 }
