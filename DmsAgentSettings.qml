@@ -144,6 +144,16 @@ PluginSettings {
                     unit: "%"
                 }
 
+                SliderSetting {
+                    settingKey: "backgroundOpacity"
+                    label: "Background Transparency"
+                    description: "Transparency of the chat window and message bubbles. 100 = opaque, 0 = fully transparent."
+                    defaultValue: 100
+                    minimum: 30
+                    maximum: 100
+                    unit: "%"
+                }
+
                 ToggleSetting {
                     settingKey: "autoUpdate"
                     label: "Auto-update"

@@ -229,7 +229,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         height: inputCol.height
-        radius: 20; color: Theme.surfaceContainer
+        radius: 20; color: Theme.withAlpha(Theme.surfaceContainer, AgentService.backgroundOpacity / 100)
         z: 10
 
         layer.enabled: true
@@ -932,7 +932,7 @@ Item {
                 id: uRect; anchors.right: parent.right
                 width: Math.min(parent.width * 0.8, uMetric.implicitWidth + 28)
                 height: uTxt.implicitHeight + 20 + chatRoot.bubbleActionStrip
-                radius: 16; color: Theme.primary
+                radius: 16; color: Theme.withAlpha(Theme.primary, AgentService.backgroundOpacity / 100)
 
                 HoverHandler { id: uHover }
 
@@ -990,7 +990,7 @@ Item {
                 id: aRect; anchors.left: parent.left
                 width: Math.min(parent.width * 0.85, aMetric.implicitWidth + 28)
                 height: aTxt.implicitHeight + 20 + chatRoot.bubbleActionStrip
-                radius: 16; color: Theme.surfaceContainer
+                radius: 16; color: Theme.withAlpha(Theme.surfaceContainer, AgentService.backgroundOpacity / 100)
 
                 HoverHandler { id: aHover }
 

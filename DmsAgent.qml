@@ -73,6 +73,7 @@ PluginComponent {
         AgentService.maxTokens = parseInt(pluginData.maxTokens) || 1024;
         AgentService.bubbleFontSize = parseInt(pluginData.bubbleFontSize) || 13;
         AgentService.panelHeightPercent = parseInt(pluginData.panelHeightPercent) || 75;
+        AgentService.backgroundOpacity = parseInt(pluginData.backgroundOpacity) || 100;
         AgentService.extendedThinking = pluginData.extendedThinking === true;
         if (pluginData.systemPrompt) AgentService.systemPrompt = pluginData.systemPrompt;
         AgentService.pillLabel = pluginData.pillLabel || "Jarvis";
