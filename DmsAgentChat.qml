@@ -25,7 +25,8 @@ Item {
 
         property string label: ""
         property color fg: Theme.surfaceVariantText
-        property color bg: Theme.withAlpha(Theme.surfaceVariant, 0.6)
+        property color bg: Theme.surfaceVariant
+        property color copiedColor: Theme.primary
         property bool copied: false
 
         signal requested()
@@ -33,7 +34,7 @@ Item {
         width: chipRow.width + 12
         height: 18
         radius: 9
-        color: chipArea.containsMouse ? Theme.withAlpha(chip.bg, 1.0) : chip.bg
+        color: chipArea.containsMouse ? Theme.withAlpha(chip.bg, 1.0) : Theme.withAlpha(chip.bg, 0.85)
         border.width: 1
         border.color: Theme.withAlpha(chip.fg, 0.25)
 
@@ -47,14 +48,14 @@ Item {
             DankIcon {
                 name: chip.copied ? "check" : "content_copy"
                 size: 11
-                color: chip.copied ? Theme.primary : chip.fg
+                color: chip.copied ? chip.copiedColor : chip.fg
                 anchors.verticalCenter: parent.verticalCenter
             }
 
             Text {
                 text: chip.copied ? AgentService.tr("bubble.copied") : chip.label
                 font.pixelSize: 9
-                color: chip.copied ? Theme.primary : chip.fg
+                color: chip.copied ? chip.copiedColor : chip.fg
                 anchors.verticalCenter: parent.verticalCenter
             }
         }
@@ -913,9 +914,9 @@ Item {
     // selectable. The natural width is measured by a hidden Text alongside it —
     // asking TextEdit for its implicitWidth while its own width comes from the
     // bubble would be a binding loop.
-    // The strip at the bottom of each bubble is reserved whether the copy chips
-    // are showing or not, so bubbles do not jump when the pointer enters them.
-    readonly property int bubbleActionStrip: 22
+    // The top and bottom margins are symmetrical (10px each). Copy chips float
+    // as an overlay in the bottom right corner when hovered.
+    readonly property int bubbleActionStrip: 0
 
     Component {
         id: userComp
@@ -932,7 +933,7 @@ Item {
             Rectangle {
                 id: uRect; anchors.right: parent.right
                 width: Math.min(parent.width * 0.8, uMetric.implicitWidth + 28)
-                height: uTxt.implicitHeight + 20 + chatRoot.bubbleActionStrip
+                height: uTxt.implicitHeight + 11
                 radius: 16; color: Theme.withAlpha(Theme.primary, AgentService.backgroundOpacity / 100)
 
                 HoverHandler { id: uHover }
@@ -940,7 +941,10 @@ Item {
                 TextEdit {
                     id: uTxt
                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-                    anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.topMargin: 10
+                    anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.topMargin: 8
+                    padding: 0
+                    topPadding: 0
+                    bottomPadding: 0
                     text: content
                     wrapMode: TextEdit.Wrap
                     color: Theme.primaryText
@@ -959,15 +963,16 @@ Item {
                 }
 
                 CopyChip {
-                    anchors.right: parent.right; anchors.rightMargin: 12
-                    anchors.bottom: parent.bottom; anchors.bottomMargin: 4
+                    anchors.right: parent.right; anchors.rightMargin: 8
+                    anchors.bottom: parent.bottom; anchors.bottomMargin: 6
                     opacity: uHover.hovered ? 1 : 0
                     visible: opacity > 0
                     Behavior on opacity { NumberAnimation { duration: 120 } }
 
                     label: AgentService.tr("bubble.copyText")
-                    fg: Theme.primaryText
-                    bg: Theme.withAlpha(Theme.primaryText, 0.15)
+                    fg: Theme.primary
+                    bg: Theme.primaryText
+                    copiedColor: Theme.primary
                     onRequested: chatRoot.copyToClipboard(content)
                 }
             }
@@ -990,7 +995,7 @@ Item {
             Rectangle {
                 id: aRect; anchors.left: parent.left
                 width: Math.min(parent.width * 0.85, aMetric.implicitWidth + 28)
-                height: aTxt.implicitHeight + 20 + chatRoot.bubbleActionStrip
+                height: aTxt.implicitHeight + 16
                 radius: 16; color: Theme.withAlpha(Theme.surfaceContainer, AgentService.backgroundOpacity / 100)
 
                 HoverHandler { id: aHover }
@@ -998,7 +1003,10 @@ Item {
                 TextEdit {
                     id: aTxt
                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-                    anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.topMargin: 10
+                    anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.topMargin: 8
+                    padding: 0
+                    topPadding: 0
+                    bottomPadding: 0
                     text: Md.markdownToHtml(content)
                     textFormat: TextEdit.RichText
                     wrapMode: TextEdit.Wrap
@@ -1018,8 +1026,8 @@ Item {
                 }
 
                 Row {
-                    anchors.right: parent.right; anchors.rightMargin: 12
-                    anchors.bottom: parent.bottom; anchors.bottomMargin: 4
+                    anchors.right: parent.right; anchors.rightMargin: 8
+                    anchors.bottom: parent.bottom; anchors.bottomMargin: 6
                     spacing: 6
                     opacity: aHover.hovered ? 1 : 0
                     visible: opacity > 0
