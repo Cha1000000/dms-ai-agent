@@ -1090,12 +1090,15 @@ Item {
     Connections {
         target: AgentService
 
-        function onVoiceTextReady(text) {
+        function onVoiceTextReady(text, isFirstChunk) {
             if (!chatRoot.active) return;
-            var pos = inputField.cursorPosition;
-            var before = inputField.text.substring(0, pos);
-            var sep = before.length > 0 && !/\s$/.test(before) ? " " : "";
-            inputField.insert(pos, sep + text);
+            var currentText = inputField.text;
+            var sep = "";
+            if (currentText.length > 0) {
+                sep = isFirstChunk ? "\n\n" : "\n";
+            }
+            inputField.text = currentText + sep + text;
+            inputField.cursorPosition = inputField.text.length;
             inputField.forceActiveFocus();
         }
 

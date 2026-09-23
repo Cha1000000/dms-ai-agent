@@ -78,10 +78,20 @@ Singleton {
     // pw-record writes a 16 kHz mono WAV; voice.py sends it to a local
     // faster-whisper server that keeps the model loaded between phrases.
     // Stop uses SIGTERM: on SIGINT pw-record leaves a header-only file.
+    // Recording is split into 2-minute chunks; each chunk is transcribed as
+    // soon as it's ready, text is appended to the input field incrementally.
     property string voiceState: "idle"    // idle | recording | transcribing
     property int voiceSeconds: 0
     property string voiceError: ""
-    signal voiceTextReady(string text)
+    signal voiceTextReady(string text, bool isFirstChunk)
+
+    // Chunked recording state
+    property int voiceChunkDuration: 120
+    property int voiceCurrentChunkSeconds: 0
+    property var voiceChunkQueue: []  // [{path: string, index: int}]
+    property int voiceChunkIndex: 0
+    property bool voiceTranscribing: false
+    property bool voiceSessionStarted: false
 
     // What the current recording listens to:
     //   "mic"    — the microphone (a named one from the settings, else the system default)
@@ -102,6 +112,7 @@ Singleton {
         id: recRunner
         Process {
             id: recProc
+            property string wavPath: ""
             // "stream.capture.sink=true" attaches the stream to the monitor of the
             // *current* output, so it follows a switch from speakers to headphones
             // on its own — no need to look the device up.
@@ -109,7 +120,7 @@ Singleton {
                 var cmd = ["pw-record"];
                 if (root.voiceSource === "output") cmd.push("-P", "stream.capture.sink=true");
                 else if (root.voiceDevice !== "") cmd.push("--target", root.voiceDevice);
-                return cmd.concat(["--rate", "16000", "--channels", "1", "--format", "s16", root.voiceWav]);
+                return cmd.concat(["--rate", "16000", "--channels", "1", "--format", "s16", wavPath]);
             }
             stderr: StdioCollector {}
             onExited: {
@@ -125,7 +136,10 @@ Singleton {
         running: root.voiceState === "recording"
         onTriggered: {
             root.voiceSeconds += 1;
-            if (root.voiceSeconds >= root.voiceMaxSeconds) root.stopVoice();
+            root.voiceCurrentChunkSeconds += 1;
+            if (root.voiceCurrentChunkSeconds >= root.voiceChunkDuration) {
+                root._rotateChunk();
+            }
         }
     }
 
@@ -134,17 +148,53 @@ Singleton {
         voiceSource = source === "output" ? "output" : "mic";
         voiceError = "";
         voiceSeconds = 0;
+        voiceCurrentChunkSeconds = 0;
+        voiceChunkIndex = 0;
+        voiceChunkQueue = [];
+        voiceSessionStarted = true;
         _recCancelled = false;
-        var p = recRunner.createObject(root);
+        _startChunk();
+        voiceState = "recording";
+    }
+
+    function _startChunk() {
+        var chunkPath = voiceWav + "-" + voiceChunkIndex;
+        var p = recRunner.createObject(root, { wavPath: chunkPath });
         _recProcess = p;
         p.running = true;
-        voiceState = "recording";
+    }
+
+    function _rotateChunk() {
+        if (!_recProcess) return;
+        var currentPath = voiceWav + "-" + voiceChunkIndex;
+        
+        // Завершаем текущий процесс записи
+        _recProcess.signal(15);
+        
+        // Добавляем в очередь транскрибации
+        voiceChunkQueue = voiceChunkQueue.concat([{path: currentPath, index: voiceChunkIndex}]);
+        
+        // Запускаем обработку очереди, если она не идёт
+        if (!voiceTranscribing) _processNextChunk();
+        
+        // Следующий чанк
+        voiceChunkIndex += 1;
+        voiceCurrentChunkSeconds = 0;
+        _startChunk();
     }
 
     function stopVoice() {
         if (voiceState !== "recording" || !_recProcess) return;
-        voiceState = "transcribing";
+        
+        // Финализируем последний чанк
+        var currentPath = voiceWav + "-" + voiceChunkIndex;
+        voiceChunkQueue = voiceChunkQueue.concat([{path: currentPath, index: voiceChunkIndex}]);
+        
         _recProcess.signal(15);
+        voiceState = "transcribing";
+        
+        // Запускаем обработку очереди
+        if (!voiceTranscribing) _processNextChunk();
     }
 
     function cancelVoice() {
@@ -154,25 +204,69 @@ Singleton {
     }
 
     function _onRecordingExited() {
+        var wasRotation = voiceState === "recording";
         _recProcess = null;
-        if (_recCancelled || voiceState === "recording") {
-            // Cancelled, or pw-record died on its own (no microphone, PipeWire down).
-            if (!_recCancelled) voiceError = tr(voiceSource === "output" ? "error.noOutput" : "error.micUnavailable");
+        
+        if (_recCancelled) {
+            // Отменено пользователем — удаляем все чанки и очищаем очередь
             voiceState = "idle";
-            runQuietExit("rm -f " + shellQuote(voiceWav), function() {});
+            for (var i = 0; i < voiceChunkQueue.length; i++) {
+                runQuietExit("rm -f " + shellQuote(voiceChunkQueue[i].path), function() {});
+            }
+            voiceChunkQueue = [];
             return;
         }
+        
+        if (wasRotation) {
+            // Ротация чанка — процесс уже запущен в _rotateChunk()
+            return;
+        }
+        
+        // Если процесс умер сам (нет микрофона, PipeWire упал)
+        if (voiceState === "recording") {
+            voiceError = tr(voiceSource === "output" ? "error.noOutput" : "error.micUnavailable");
+            voiceState = "idle";
+            for (var j = 0; j < voiceChunkQueue.length; j++) {
+                runQuietExit("rm -f " + shellQuote(voiceChunkQueue[j].path), function() {});
+            }
+            voiceChunkQueue = [];
+            return;
+        }
+    }
+
+    function _processNextChunk() {
+        if (voiceChunkQueue.length === 0) {
+            voiceTranscribing = false;
+            if (voiceState === "transcribing") {
+                // Все чанки обработаны, сессия завершена
+                voiceState = "idle";
+                voiceSessionStarted = false;
+            }
+            return;
+        }
+        
+        voiceTranscribing = true;
+        var chunk = voiceChunkQueue[0];
+        voiceChunkQueue = voiceChunkQueue.slice(1);
+        
+        var isFirstChunk = voiceSessionStarted;
+        if (isFirstChunk) voiceSessionStarted = false;
+        
         var env = "DMS_AGENT_WHISPER_MODEL=" + shellQuote(voiceModel)
             + " DMS_AGENT_WHISPER_LANG=" + shellQuote(voiceLanguage)
             + " DMS_AGENT_WHISPER_VENV=" + shellQuote(voiceVenv) + " ";
-        runQuietExit(env + "python3 " + shellQuote(voiceScript) + " transcribe " + shellQuote(voiceWav)
-                + "; rm -f " + shellQuote(voiceWav), function(output) {
+        runQuietExit(env + "python3 " + shellQuote(voiceScript) + " transcribe " + shellQuote(chunk.path)
+                + "; rm -f " + shellQuote(chunk.path), function(output) {
             var result = {};
-            try { result = JSON.parse(String(output).trim()); } catch(e) { result = { error: tr("error.noRecognition") }; }
-            if (result.error) voiceError = result.error;
-            else if (!result.text) voiceError = tr("error.noSpeech");
-            else voiceTextReady(result.text);
-            voiceState = "idle";
+            try { result = JSON.parse(String(output).trim()); } catch(e) {}
+            
+            if (result.text) {
+                // Вызываем сигнал с флагом первого чанка
+                voiceTextReady(result.text, isFirstChunk);
+            }
+            
+            // Следующий чанк
+            _processNextChunk();
         });
     }
 

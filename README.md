@@ -120,7 +120,9 @@ a typo never breaks your running config. On other compositors, bind
 ### Voice input
 
 Click the mic, speak, click again: the text is inserted at the cursor so you can fix it before
-sending. `Esc` cancels. Recording is capped at 2 minutes.
+sending. `Esc` cancels. Recording continues in 2-minute chunks; each chunk is transcribed in the
+background and its text is appended to the input field. Stop recording manually, or let it
+continue as long as needed.
 
 Speech is recognized locally by [faster-whisper](https://github.com/SYSTRAN/faster-whisper). The
 model is loaded by a small background server on first use and unloaded after 10 idle minutes, so
