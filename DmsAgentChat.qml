@@ -136,21 +136,22 @@ Item {
         readonly property bool recording: active && AgentService.voiceState === "recording"
         readonly property bool transcribing: active && AgentService.voiceState === "transcribing"
         readonly property bool otherBusy: AgentService.voiceState !== "idle" && !active
+        readonly property bool warmingUp: AgentService.voiceWarmupInProgress
 
         visible: !AgentService.busy
         width: 32; height: 32; radius: 16
-        opacity: otherBusy ? 0.35 : 1
+        opacity: otherBusy || warmingUp ? 0.5 : 1
         color: recording ? Theme.withAlpha("#EF4444", 0.18)
-            : (captureArea.containsMouse && !otherBusy ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
+            : (captureArea.containsMouse && !otherBusy && !warmingUp ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
 
         DankIcon {
             id: captureIcon
             anchors.centerIn: parent
-            name: capture.transcribing ? "progress_activity" : (capture.recording ? "stop" : capture.idleIcon)
-            color: capture.recording ? "#EF4444" : Theme.surfaceVariantText
+            name: transcribing ? "progress_activity" : (recording ? "stop" : capture.idleIcon)
+            color: recording ? "#EF4444" : (warmingUp ? Theme.withAlpha(Theme.surfaceVariantText, 0.5) : Theme.surfaceVariantText)
             size: 18
             RotationAnimation on rotation {
-                running: capture.transcribing; loops: Animation.Infinite
+                running: transcribing; loops: Animation.Infinite
                 from: 0; to: 360; duration: 900
                 onRunningChanged: if (!running) captureIcon.rotation = 0
             }
@@ -167,7 +168,7 @@ Item {
             id: captureArea
             anchors.fill: parent
             hoverEnabled: true
-            enabled: !capture.transcribing && !capture.otherBusy
+            enabled: !capture.transcribing && !capture.otherBusy && !AgentService.voiceWarmupInProgress
             cursorShape: Qt.PointingHandCursor
             onClicked: {
                 if (capture.recording) AgentService.stopVoice();

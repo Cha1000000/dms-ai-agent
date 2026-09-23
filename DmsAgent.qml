@@ -97,12 +97,16 @@ PluginComponent {
             agentChat.reloadMessages();
             visible = true; isVisible = true; AgentService.setPanelVisible(root.screenName, true);
             animScale = 1.0; animOpacity = 1.0;
+            // Прогрев Whisper-модели при каждом открытии чата
+            AgentService.warmupVoice();
         }
         function hide() {
             // Closing the chat mid-dictation drops the recording.
             if (AgentService.voiceState === "recording") AgentService.cancelVoice();
             isVisible = false; AgentService.setPanelVisible(root.screenName, false);
             animScale = 0.92; animOpacity = 0.0;
+            // Останавливаем Whisper-сервер для освобождения памяти (~900 МБ)
+            AgentService.stopWhisperServer();
         }
         function toggle() {
             if (isVisible) hide();

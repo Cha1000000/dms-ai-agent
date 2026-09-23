@@ -83,6 +83,7 @@ Singleton {
     property string voiceState: "idle"    // idle | recording | transcribing
     property int voiceSeconds: 0
     property string voiceError: ""
+    property bool voiceWarmupInProgress: false
     signal voiceTextReady(string text, bool isFirstChunk)
 
     // Chunked recording state
@@ -203,6 +204,37 @@ Singleton {
         _recProcess.signal(15);
     }
 
+    function warmupVoice() {
+        // Прогрев Whisper-модели и PipeWire для первой записи:
+        // записываем 1 секунду тишины, отправляем на транскрибацию, игнорируем результат.
+        voiceWarmupInProgress = true;
+        
+        var warmupPath = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/dms-agent-warmup.wav";
+        
+        var cmd = ["pw-record"];
+        if (voiceSource === "output") cmd.push("-P", "stream.capture.sink=true");
+        else if (voiceDevice !== "") cmd.push("--target", voiceDevice);
+        cmd = cmd.concat(["--rate", "16000", "--channels", "1", "--format", "s16", warmupPath]);
+        
+        var env = "DMS_AGENT_WHISPER_MODEL=" + shellQuote(voiceModel)
+            + " DMS_AGENT_WHISPER_LANG=" + shellQuote(voiceLanguage)
+            + " DMS_AGENT_WHISPER_VENV=" + shellQuote(voiceVenv)
+            + " DMS_AGENT_WHISPER_IDLE=7200 ";
+        
+        // Записываем 1 секунду, затем транскрибируем и удаляем
+        runQuietExit("timeout 1s " + cmd.join(" ") + " 2>/dev/null; "
+            + env + "python3 " + shellQuote(voiceScript) + " transcribe " + shellQuote(warmupPath) + " >/dev/null 2>&1; "
+            + "rm -f " + shellQuote(warmupPath), function() {
+            voiceWarmupInProgress = false;
+        });
+    }
+
+    function stopWhisperServer() {
+        // Останавливаем Whisper-сервер при закрытии окна чата для освобождения памяти (~900 МБ).
+        // Сервер запускается заново при следующем открытии чата (через warmupVoice).
+        runQuietExit("pkill -f 'python.*voice\\.py serve' 2>/dev/null", function() {});
+    }
+
     function _onRecordingExited() {
         var wasRotation = voiceState === "recording";
         _recProcess = null;
@@ -254,7 +286,8 @@ Singleton {
         
         var env = "DMS_AGENT_WHISPER_MODEL=" + shellQuote(voiceModel)
             + " DMS_AGENT_WHISPER_LANG=" + shellQuote(voiceLanguage)
-            + " DMS_AGENT_WHISPER_VENV=" + shellQuote(voiceVenv) + " ";
+            + " DMS_AGENT_WHISPER_VENV=" + shellQuote(voiceVenv)
+            + " DMS_AGENT_WHISPER_IDLE=7200 ";
         runQuietExit(env + "python3 " + shellQuote(voiceScript) + " transcribe " + shellQuote(chunk.path)
                 + "; rm -f " + shellQuote(chunk.path), function(output) {
             var result = {};
