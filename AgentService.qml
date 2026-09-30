@@ -617,6 +617,12 @@ Singleton {
         });
     }
 
+    function renameSession(historySessionId, title) {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " rename " + shellQuote(historySessionId) + " " + shellQuote(title), function() {
+            loadHistory();
+        });
+    }
+
     function deleteAllSessions() {
         runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " delete-all", function() {
             clearMessages();

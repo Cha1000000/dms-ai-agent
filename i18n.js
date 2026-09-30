@@ -17,6 +17,7 @@ var STRINGS = {
 
         "history.empty": "No conversations yet",
         "history.clearAll": "Clear all",
+        "history.rename": "Rename",
 
         "confirm.deleteOne": "Delete this conversation?",
         "confirm.deleteAll": "Delete all {n} conversations?",
@@ -81,6 +82,7 @@ var STRINGS = {
 
         "history.empty": "Пока нет разговоров",
         "history.clearAll": "Очистить всё",
+        "history.rename": "Переименовать",
 
         "confirm.deleteOne": "Удалить этот разговор?",
         "confirm.deleteAll": "Удалить все разговоры ({n})?",

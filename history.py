@@ -25,6 +25,23 @@ def is_agent_session(path):
     return False
 
 
+def custom_title(path):
+    """The name given with /rename in the CLI or from this plugin: Claude Code
+    keeps it as "custom-title" records in the transcript, the last one wins."""
+    name = ""
+    with open(path) as fh:
+        for line in fh:
+            if '"custom-title"' not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            if d.get("type") == "custom-title":
+                name = d.get("customTitle") or ""
+    return name.strip()
+
+
 if action == "list":
     results = []
     files = sorted(glob.glob(base + "*.jsonl"), key=os.path.getmtime, reverse=True)
@@ -50,7 +67,7 @@ if action == "list":
                 except:
                     pass
         if title:
-            results.append({"id": sid, "title": title, "date": int(mtime * 1000)})
+            results.append({"id": sid, "title": custom_title(f) or title, "date": int(mtime * 1000)})
     print(json.dumps(results))
 
 elif action == "delete":
@@ -65,6 +82,30 @@ elif action == "delete":
             os.remove(path)
             ok = True
     print(json.dumps({"deleted": 1 if ok else 0}))
+
+elif action == "rename":
+    # Same records /rename writes, so the new name also shows up in the CLI's
+    # /resume. An empty name drops back to the automatic title. Checked like
+    # delete: the id and the name arrive from the outside.
+    sid = sys.argv[2] if len(sys.argv) > 2 else ""
+    name = " ".join((sys.argv[3] if len(sys.argv) > 3 else "").split())[:100]
+    ok = False
+    if sid and "/" not in sid and ".." not in sid:
+        path = base + sid + ".jsonl"
+        if os.path.isfile(path) and is_agent_session(path):
+            with open(path, "rb+") as fh:
+                fh.seek(0, os.SEEK_END)
+                needs_newline = False
+                if fh.tell() > 0:
+                    fh.seek(-1, os.SEEK_END)
+                    needs_newline = fh.read(1) != b"\n"
+                records = [{"type": "custom-title", "customTitle": name, "sessionId": sid},
+                           {"type": "agent-name", "agentName": name, "sessionId": sid}]
+                # Compact, like the CLI writes it: it reads the title with a regex.
+                data = "".join(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n" for r in records)
+                fh.write((b"\n" if needs_newline else b"") + data.encode("utf-8"))
+            ok = True
+    print(json.dumps({"renamed": 1 if ok else 0}))
 
 elif action == "delete-all":
     removed = 0

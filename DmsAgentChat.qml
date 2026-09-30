@@ -729,11 +729,30 @@ Item {
             visible: AgentService.history.length > 0
             model: AgentService.history
             delegate: Rectangle {
+                id: historyRow
+                // Inline rename: Enter saves, Esc or clicking away cancels.
+                property bool editing: false
+                function finishEdit(save) {
+                    if (!editing) return;
+                    editing = false;
+                    if (save && renameInput.text.trim() !== modelData.title) AgentService.renameSession(modelData.id, renameInput.text);
+                }
                 width: ListView.view.width; height: 36; radius: 8
-                color: hArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
+                color: hArea.containsMouse || editing ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 8; spacing: 8
-                    Text { text: modelData.title || "Chat"; font.pixelSize: 12; color: Theme.surfaceText; elide: Text.ElideRight; Layout.fillWidth: true }
+                    Text { visible: !historyRow.editing; text: modelData.title || "Chat"; font.pixelSize: 12; color: Theme.surfaceText; elide: Text.ElideRight; Layout.fillWidth: true }
+                    TextInput {
+                        id: renameInput
+                        visible: historyRow.editing
+                        Layout.fillWidth: true
+                        font.pixelSize: 12; color: Theme.surfaceText
+                        selectionColor: Theme.primary; selectedTextColor: Theme.primaryText || Theme.surfaceText
+                        clip: true; maximumLength: 100
+                        onAccepted: historyRow.finishEdit(true)
+                        onActiveFocusChanged: if (!activeFocus) historyRow.finishEdit(false)
+                        Keys.onEscapePressed: historyRow.finishEdit(false)
+                    }
                     Text {
                         text: { var d = new Date(modelData.date); return d.toLocaleDateString(undefined, {month:"short", day:"numeric"}) }
                         font.pixelSize: 10; color: Theme.surfaceVariantText
@@ -742,6 +761,36 @@ Item {
                     // Above the row's own MouseArea, so it takes the click instead
                     // of opening the conversation.
                     Rectangle {
+                        visible: !historyRow.editing
+                        Layout.preferredWidth: 20; Layout.preferredHeight: 20
+                        radius: 10
+                        color: renameRowArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.2) : "transparent"
+                        opacity: renameRowArea.containsMouse ? 1 : (hArea.containsMouse ? 0.9 : 0.45)
+                        Behavior on opacity { NumberAnimation { duration: 100 } }
+
+                        DankIcon {
+                            anchors.centerIn: parent
+                            name: "edit"; size: 12
+                            color: renameRowArea.containsMouse ? Theme.primary : Theme.surfaceVariantText
+                        }
+
+                        MouseArea {
+                            id: renameRowArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                renameInput.text = modelData.title || "";
+                                historyRow.editing = true;
+                                renameInput.forceActiveFocus();
+                                renameInput.selectAll();
+                            }
+                        }
+                        TipArea { text: AgentService.tr("history.rename") }
+                    }
+
+                    Rectangle {
+                        visible: !historyRow.editing
                         Layout.preferredWidth: 20; Layout.preferredHeight: 20
                         radius: 10
                         color: dropRowArea.containsMouse ? Theme.withAlpha(Theme.error || "#EF4444", 0.2) : "transparent"
@@ -763,7 +812,7 @@ Item {
                         }
                     }
                 }
-                MouseArea { id: hArea; anchors.fill: parent; hoverEnabled: true; z: -1; onClicked: { messageModel.clear(); AgentService.resumeSession(modelData.id); historyDropdown.visible = false; } }
+                MouseArea { id: hArea; anchors.fill: parent; hoverEnabled: true; z: -1; enabled: !historyRow.editing; onClicked: { messageModel.clear(); AgentService.resumeSession(modelData.id); historyDropdown.visible = false; } }
             }
         }
     }
