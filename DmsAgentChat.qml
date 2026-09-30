@@ -405,20 +405,22 @@ Item {
                     // Model dropdown
                     Rectangle {
                         width: modelRow.implicitWidth + 16; height: 26; radius: 13
+                        Layout.preferredWidth: width; Layout.rightMargin: 4
                         color: modelDropArea.containsMouse || modelDropdown.visible ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
 
                         Row {
                             id: modelRow; anchors.centerIn: parent; spacing: 4
-                            Text { text: AgentService.claudeModel; font.pixelSize: 11; color: Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: AgentService.modelLabel(AgentService.claudeModel); font.pixelSize: 11; color: Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
                             DankIcon { name: modelDropdown.visible ? "expand_less" : "expand_more"; color: Theme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
                         }
 
-                        MouseArea { id: modelDropArea; anchors.fill: parent; hoverEnabled: true; onClicked: modelDropdown.visible = !modelDropdown.visible }
+                        MouseArea { id: modelDropArea; anchors.fill: parent; hoverEnabled: true; onClicked: { modelDropdown.visible = !modelDropdown.visible; if (modelDropdown.visible) AgentService.refreshModels(); } }
                     }
 
                     // Think
                     Rectangle {
                         width: thinkRow.implicitWidth + 14; height: 26; radius: 13
+                        Layout.preferredWidth: width
                         color: AgentService.extendedThinking ? Theme.withAlpha(Theme.primary, 0.15) : (thinkArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
                         Row {
                             id: thinkRow; anchors.centerIn: parent; spacing: 4
@@ -603,7 +605,7 @@ Item {
         id: modelDropdown; visible: false
         anchors.bottom: inputCard.top; anchors.bottomMargin: 6
         anchors.left: inputCard.left; anchors.leftMargin: 8
-        width: 130; height: modelCol.height + 8; radius: 12
+        width: 230; height: modelCol.height + 8; radius: 12
         color: Theme.surfaceContainerHighest
         z: 20
 
@@ -611,16 +613,16 @@ Item {
             id: modelCol; anchors.top: parent.top; anchors.topMargin: 4
             anchors.left: parent.left; anchors.right: parent.right
             Repeater {
-                model: [{ id: "haiku", label: "Haiku", desc: AgentService.tr("model.fast") }, { id: "sonnet", label: "Sonnet", desc: AgentService.tr("model.balanced") }, { id: "opus", label: "Opus", desc: AgentService.tr("model.best") }]
+                model: AgentService.models
                 Rectangle {
                     width: modelCol.width; height: 32; radius: 8
                     color: optArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 6
-                        Text { text: modelData.label; font.pixelSize: 12; font.weight: AgentService.claudeModel === modelData.id ? Font.Bold : Font.Normal; color: AgentService.claudeModel === modelData.id ? Theme.surfaceText : Theme.surfaceVariantText }
-                        Text { text: modelData.desc; font.pixelSize: 10; color: Theme.withAlpha(Theme.surfaceVariantText, 0.5) }
+                        Text { text: modelData.label; font.pixelSize: 12; font.weight: AgentService.isCurrentModel(modelData) ? Font.Bold : Font.Normal; color: AgentService.isCurrentModel(modelData) ? Theme.surfaceText : Theme.surfaceVariantText }
+                        Text { text: AgentService.modelDesc(modelData); font.pixelSize: 10; color: Theme.withAlpha(Theme.surfaceVariantText, 0.5) }
                         Item { Layout.fillWidth: true }
-                        DankIcon { visible: AgentService.claudeModel === modelData.id; name: "check"; color: Theme.primary; size: 14 }
+                        DankIcon { visible: AgentService.isCurrentModel(modelData); name: "check"; color: Theme.primary; size: 14 }
                     }
                     MouseArea { id: optArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.claudeModel = modelData.id; modelDropdown.visible = false; } }
                 }

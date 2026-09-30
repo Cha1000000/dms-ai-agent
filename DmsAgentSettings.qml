@@ -66,7 +66,7 @@ PluginSettings {
                 StringSetting {
                     settingKey: "claudeModel"
                     label: "Model"
-                    description: "haiku (fast), sonnet (balanced), opus (best)"
+                    description: "haiku / sonnet / opus or a full id, e.g. claude-opus-5-5"
                     placeholder: "haiku"
                     defaultValue: "haiku"
                 }

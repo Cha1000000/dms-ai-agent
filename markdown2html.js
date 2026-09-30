@@ -67,8 +67,10 @@ function markdownToHtml(text) {
     html = html.replace(/^\d+\. (.*?)$/gm, '<li>$1</li>');
 
     // Wrap consecutive list items in ul/ol tags
+    // Newlines between items would later turn into <br/> (or </p><p> for loose
+    // lists) and show up as blank lines inside the list, so they are dropped here.
     html = html.replace(/(<li>[\s\S]*?<\/li>\s*)+/g, function(match) {
-        return '<ul>' + match + '</ul>';
+        return '<ul style="margin-top:4px;margin-bottom:4px">' + match.replace(/<\/li>\s*/g, '</li>') + '</ul>';
     });
 
     // Restore extracted URLs as anchor tags (preserves raw & in href)
@@ -99,7 +101,7 @@ function markdownToHtml(text) {
     // Clean up the final HTML
     // Remove <br/> tags immediately before block elements
     html = html.replace(/<br\/>\s*<pre>/g, '<pre>');
-    html = html.replace(/<br\/>\s*<ul>/g, '<ul>');
+    html = html.replace(/<br\/>\s*<ul/g, '<ul');
     // The heading level has to be captured, otherwise the replacement inserts a
     // literal "<h$1>" and the heading is lost.
     html = html.replace(/<br\/>\s*<h([1-6])>/g, '<h$1>');
@@ -119,7 +121,7 @@ function markdownToHtml(text) {
     // and TextEdit has no lineHeight property the way Text does — so the spacing
     // is set here instead, in CSS. Qt's rich text only honours line-height on
     // block tags, hence the explicit list; <pre> is left alone so code stays tight.
-    html = html.replace(/<(p|li|h1|h2|h3)>/g, '<$1 style="line-height:140%">');
+    html = html.replace(/<(p|li|h1|h2|h3)>/g, '<$1 style="line-height:115%">');
 
     return html;
 }

@@ -25,6 +25,50 @@ Singleton {
     }
 
     property string claudeModel: "haiku"
+
+    // The /model list of the CLI (minus Fable), filled by models.py so new
+    // versions and names appear on their own. Until it answers, the bare aliases
+    // are offered — they always point at the latest version anyway.
+    property var models: [
+        { id: "opus", label: "Opus", resolved: "" },
+        { id: "sonnet", label: "Sonnet", resolved: "" },
+        { id: "haiku", label: "Haiku", resolved: "" }
+    ]
+    readonly property string modelsScript: decodeURIComponent(String(Qt.resolvedUrl("models.py")).replace(/^file:\/\//, ""))
+    property double _modelsFetchedAt: 0
+
+    // A model is selected either by its alias ("opus") or by a full id
+    // ("claude-opus-4-7"), so both have to be matched.
+    function isCurrentModel(m) {
+        return claudeModel === m.id || (m.resolved !== "" && claudeModel === m.resolved);
+    }
+
+    // Short captions for the current flagship of each family (the alias entries);
+    // the CLI's own descriptions are English and too long for the dropdown.
+    function modelDesc(m) {
+        const keys = { opus: "model.best", sonnet: "model.balanced", haiku: "model.fast" };
+        return keys[m.id] ? tr(keys[m.id]) : "";
+    }
+
+    function modelLabel(id) {
+        const m = models.find(x => x.id === id || (x.resolved !== "" && x.resolved === id));
+        return m ? m.label : id;
+    }
+
+    // At most once an hour: the CLI updates itself while the shell keeps running.
+    function refreshModels() {
+        if (Date.now() - _modelsFetchedAt < 3600000) return;
+        _modelsFetchedAt = Date.now();
+        run(cdWorkDir + "python3 " + shellQuote(modelsScript) + " 2>/dev/null", function(output) {
+            try {
+                const list = JSON.parse(output);
+                if (Array.isArray(list) && list.length > 0) models = list;
+            } catch (e) {
+                _modelsFetchedAt = 0;
+            }
+        });
+    }
+
     property bool extendedThinking: false
     property string systemPrompt: "You are a concise desktop assistant on Linux with niri (Wayland compositor) and DankMaterialShell. " +
         "You have full tool access (Bash, Read, Write, Edit). Execute actions immediately, never ask for confirmation. " +
@@ -490,7 +534,7 @@ Singleton {
     readonly property string workDir: homeDir + "/.local/state/dms-agent"
     readonly property string cdWorkDir: "mkdir -p " + shellQuote(workDir) + " && cd " + shellQuote(workDir) + " && "
 
-    Component.onCompleted: { loadHistory(); }
+    Component.onCompleted: { loadHistory(); refreshModels(); }
 
     // --- Process runner ---
     Component {
