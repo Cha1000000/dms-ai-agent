@@ -74,7 +74,9 @@ PluginComponent {
         AgentService.bubbleFontSize = parseInt(pluginData.bubbleFontSize) || 13;
         AgentService.panelHeightPercent = parseInt(pluginData.panelHeightPercent) || 75;
         AgentService.backgroundOpacity = parseInt(pluginData.backgroundOpacity) || 100;
-        AgentService.extendedThinking = pluginData.extendedThinking === true;
+        // The old "Extended Thinking" toggle did nothing but change the status text;
+        // whoever had it on gets "high".
+        AgentService.effort = pluginData.effort || (pluginData.extendedThinking === true ? "high" : "");
         if (pluginData.systemPrompt) AgentService.systemPrompt = pluginData.systemPrompt;
         AgentService.pillLabel = pluginData.pillLabel || "Jarvis";
         AgentService.voiceModel = pluginData.voiceModel || "auto";

@@ -71,11 +71,12 @@ PluginSettings {
                     defaultValue: "haiku"
                 }
 
-                ToggleSetting {
-                    settingKey: "extendedThinking"
-                    label: "Extended Thinking"
-                    description: "Deeper reasoning, slower responses. Best with sonnet/opus."
-                    defaultValue: false
+                StringSetting {
+                    settingKey: "effort"
+                    label: "Effort"
+                    description: "low, medium, high, xhigh or max; empty = auto. Only for models that support it."
+                    placeholder: "auto"
+                    defaultValue: ""
                 }
 
                 StringSetting {

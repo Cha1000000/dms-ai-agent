@@ -6,7 +6,8 @@ stream-json protocol), so new versions and names show up without touching the
 plugin. The result is cached; if the CLI can't be asked, the cache is printed.
 
 Output: [{"id": "opus", "label": "Opus 5.5", "resolved": "claude-opus-5-5",
-          "desc": "..."}, ...]
+          "desc": "...", "efforts": ["low", "medium", ...]}, ...]
+"efforts" is empty for models that don't support the effort setting.
 """
 import json
 import os
@@ -44,7 +45,8 @@ def main():
     try:
         models = [
             {"id": m["value"], "label": m.get("displayName") or m["value"],
-             "resolved": m.get("resolvedModel", m["value"]), "desc": m.get("description", "")}
+             "resolved": m.get("resolvedModel", m["value"]), "desc": m.get("description", ""),
+             "efforts": m.get("supportedEffortLevels") or []}
             for m in ask_cli()
             if m["value"] not in SKIP_IDS and not m["value"].startswith(SKIP_PREFIXES)
         ]

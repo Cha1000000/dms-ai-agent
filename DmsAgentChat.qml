@@ -414,20 +414,29 @@ Item {
                             DankIcon { name: modelDropdown.visible ? "expand_less" : "expand_more"; color: Theme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
                         }
 
-                        MouseArea { id: modelDropArea; anchors.fill: parent; hoverEnabled: true; onClicked: { modelDropdown.visible = !modelDropdown.visible; if (modelDropdown.visible) AgentService.refreshModels(); } }
+                        MouseArea { id: modelDropArea; anchors.fill: parent; hoverEnabled: true; onClicked: { effortDropdown.visible = false; modelDropdown.visible = !modelDropdown.visible; if (modelDropdown.visible) AgentService.refreshModels(); } }
                     }
 
-                    // Think
+                    // Effort
                     Rectangle {
-                        width: thinkRow.implicitWidth + 14; height: 26; radius: 13
+                        id: effortButton
+                        visible: AgentService.effortLevels.length > 0
+                        width: effortRow.implicitWidth + 14; height: 26; radius: 13
                         Layout.preferredWidth: width
-                        color: AgentService.extendedThinking ? Theme.withAlpha(Theme.primary, 0.15) : (thinkArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
+                        color: AgentService.activeEffort !== "" ? Theme.withAlpha(Theme.primary, 0.15) : (effortArea.containsMouse || effortDropdown.visible ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent")
                         Row {
-                            id: thinkRow; anchors.centerIn: parent; spacing: 4
-                            DankIcon { name: "psychology"; color: AgentService.extendedThinking ? Theme.primary : Theme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
-                            Text { text: AgentService.tr("toolbar.think"); font.pixelSize: 11; color: AgentService.extendedThinking ? Theme.primary : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            id: effortRow; anchors.centerIn: parent; spacing: 4
+                            DankIcon { name: "neurology"; color: AgentService.activeEffort !== "" ? Theme.primary : Theme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: AgentService.tr("effort." + (AgentService.activeEffort || "auto")); font.pixelSize: 11; color: AgentService.activeEffort !== "" ? Theme.primary : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
                         }
-                        MouseArea { id: thinkArea; anchors.fill: parent; hoverEnabled: true; onClicked: AgentService.extendedThinking = !AgentService.extendedThinking }
+                        MouseArea {
+                            id: effortArea; anchors.fill: parent; hoverEnabled: true
+                            onClicked: {
+                                effortDropdown.leftOffset = effortButton.mapToItem(chatRoot, 0, 0).x;
+                                effortDropdown.visible = !effortDropdown.visible;
+                                modelDropdown.visible = false;
+                            }
+                        }
                     }
 
                     // New chat
@@ -598,6 +607,7 @@ Item {
     // --- Neon rims (behind the cards they outline) ---
     NeonBorder { target: inputCard; radius: 20 }
     NeonBorder { target: modelDropdown; radius: 12; glowOpacity: 0.45 }
+    NeonBorder { target: effortDropdown; radius: 12; glowOpacity: 0.45 }
     NeonBorder { target: historyDropdown; radius: 12; glowOpacity: 0.45 }
 
     // --- Model Dropdown (outside input card, z on top) ---
@@ -625,6 +635,36 @@ Item {
                         DankIcon { visible: AgentService.isCurrentModel(modelData); name: "check"; color: Theme.primary; size: 14 }
                     }
                     MouseArea { id: optArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.claudeModel = modelData.id; modelDropdown.visible = false; } }
+                }
+            }
+        }
+    }
+
+    // --- Effort Dropdown (levels come from the selected model) ---
+    Rectangle {
+        id: effortDropdown; visible: false
+        property real leftOffset: 8
+        anchors.bottom: inputCard.top; anchors.bottomMargin: 6
+        anchors.left: inputCard.left; anchors.leftMargin: leftOffset
+        width: 150; height: effortCol.height + 8; radius: 12
+        color: Theme.surfaceContainerHighest
+        z: 20
+
+        Column {
+            id: effortCol; anchors.top: parent.top; anchors.topMargin: 4
+            anchors.left: parent.left; anchors.right: parent.right
+            Repeater {
+                model: [""].concat(AgentService.effortLevels)
+                Rectangle {
+                    width: effortCol.width; height: 32; radius: 8
+                    color: effArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
+                    RowLayout {
+                        anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 6
+                        Text { text: AgentService.tr("effort." + (modelData || "auto")); font.pixelSize: 12; font.weight: AgentService.activeEffort === modelData ? Font.Bold : Font.Normal; color: AgentService.activeEffort === modelData ? Theme.surfaceText : Theme.surfaceVariantText }
+                        Item { Layout.fillWidth: true }
+                        DankIcon { visible: AgentService.activeEffort === modelData; name: "check"; color: Theme.primary; size: 14 }
+                    }
+                    MouseArea { id: effArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.effort = modelData; effortDropdown.visible = false; } }
                 }
             }
         }

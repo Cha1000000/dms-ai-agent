@@ -69,7 +69,14 @@ Singleton {
         });
     }
 
-    property bool extendedThinking: false
+    // Reasoning effort passed as --effort. Empty means "auto": no flag, the CLI
+    // picks its own default. Only levels the current model supports are valid.
+    property string effort: ""
+    readonly property var effortLevels: {
+        const m = models.find(x => x.id === claudeModel || (x.resolved && x.resolved === claudeModel));
+        return (m && m.efforts) ? m.efforts : [];
+    }
+    readonly property string activeEffort: effortLevels.indexOf(effort) >= 0 ? effort : ""
     property string systemPrompt: "You are a concise desktop assistant on Linux with niri (Wayland compositor) and DankMaterialShell. " +
         "You have full tool access (Bash, Read, Write, Edit). Execute actions immediately, never ask for confirmation. " +
         "Respond in user's language. Be concise.\n\n" +
@@ -758,7 +765,7 @@ Singleton {
     }
 
     function callClaude(prompt) {
-        statusText = tr(extendedThinking ? "status.thinking" : "status.processing");
+        statusText = tr(activeEffort !== "" ? "status.thinking" : "status.processing");
         _gotResult = false;
         _lastText = "";
         _toolNames = ({});
@@ -766,6 +773,7 @@ Singleton {
         // exec: bash is replaced by claude, so Cancel's SIGTERM reaches claude itself.
         var cmd = cdWorkDir + "exec claude -p"
             + " --model " + shellQuote(claudeModel)
+            + (activeEffort !== "" ? " --effort " + shellQuote(activeEffort) : "")
             + " --output-format stream-json --verbose"
             + " --dangerously-skip-permissions"
             + " --append-system-prompt " + shellQuote(systemPrompt)
@@ -807,7 +815,7 @@ Singleton {
                 if (res.is_error) {
                     addMessage("tool_status", "✗ " + (_toolNames[res.tool_use_id] || "tool") + " failed");
                 }
-                statusText = tr(extendedThinking ? "status.thinking" : "status.processing");
+                statusText = tr(activeEffort !== "" ? "status.thinking" : "status.processing");
             }
         } else if (ev.type === "result") {
             _gotResult = true;

@@ -91,7 +91,7 @@ Then, in DMS:
 | Setting | Default | |
 |---|---|---|
 | Model | `haiku` | `haiku`, `sonnet`, `opus` or a full id like `claude-opus-4-7`; the dropdown lists the same models as `/model` in the CLI (minus Fable), fetched from it |
-| Extended Thinking | off | deeper reasoning, slower |
+| Effort | auto | `low`, `medium`, `high`, `xhigh`, `max` (`--effort`); also switchable in the chat toolbar, levels depend on the model |
 | System Prompt | built-in | your own instructions for the agent |
 | Pill Label | `Jarvis` | text next to the icon in the bar |
 | Chat Hotkey (niri) | `Mod+Space` | any niri key combo; empty removes it |

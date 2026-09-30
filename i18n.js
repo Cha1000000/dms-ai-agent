@@ -8,7 +8,12 @@
 var STRINGS = {
     en: {
         "input.placeholder": "Message...",
-        "toolbar.think": "Think",
+        "effort.auto": "Auto",
+        "effort.low": "Low",
+        "effort.medium": "Medium",
+        "effort.high": "High",
+        "effort.xhigh": "Extra high",
+        "effort.max": "Max",
 
         "history.empty": "No conversations yet",
         "history.clearAll": "Clear all",
@@ -67,7 +72,12 @@ var STRINGS = {
 
     ru: {
         "input.placeholder": "Сообщение...",
-        "toolbar.think": "Думать",
+        "effort.auto": "Авто",
+        "effort.low": "Низкий",
+        "effort.medium": "Средний",
+        "effort.high": "Высокий",
+        "effort.xhigh": "Очень высокий",
+        "effort.max": "Максимум",
 
         "history.empty": "Пока нет разговоров",
         "history.clearAll": "Очистить всё",
