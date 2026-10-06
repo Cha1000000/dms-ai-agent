@@ -3,7 +3,7 @@
     "id": "dmsAgent",
     "name": "DMS AI Agent",
     "description": "AI desktop assistant powered by Claude Code: live tool progress, voice input, per-monitor chat",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "license": "MIT",
     "author": "francis, Cha1000000",
     "icon": "smart_toy",
@@ -12,6 +12,6 @@
     "component": "./DmsAgent.qml",
     "settings": "./DmsAgentSettings.qml",
     "requires_dms": ">=1.4.0",
-    "requires": ["bash", "curl", "xdg-open", "notify-send", "claude", "python3"],
+    "requires": ["bash", "git", "claude", "python3"],
     "permissions": ["settings_read", "settings_write"]
 }

@@ -60,7 +60,6 @@ have git || fail "git is required: $(pkg_hint git git)"
 have python3 || fail "python3 is required: $(pkg_hint python python3)"
 have dms || fail "DankMaterialShell (dms) is not installed — see https://danklinux.com"
 have claude && ok "claude CLI found" || warn "claude CLI not found — the agent needs it: https://docs.claude.com/en/docs/claude-code"
-have notify-send || warn "notify-send missing (notifications): $(pkg_hint libnotify libnotify-bin)"
 have niri || warn "niri not found — the hotkey and 'open on focused monitor' need niri; bind 'dms ipc call dmsAgent toggle' manually"
 if [ "$WITH_VOICE" = 1 ] && ! have pw-record; then
     warn "pw-record missing (voice input needs PipeWire): $(pkg_hint pipewire pipewire-bin)"

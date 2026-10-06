@@ -478,7 +478,7 @@ Singleton {
             // down, or when someone is working in the plugin directory.
             if (result !== "updated") return;
 
-            runQuietExit("notify-send -a " + shellQuote(pillLabel) + " "
+            runQuietExit("dms notify --app " + shellQuote(pillLabel) + " "
                 + shellQuote(tr("update.done")) + " " + shellQuote(tr("update.restarting")), function() {});
 
             // This command kills the shell that runs it, so it has to be
@@ -500,7 +500,7 @@ Singleton {
         run(shellQuote(keybindScript) + " " + shellQuote(key) + " 2>&1", function(output) {
             var text = String(output).trim();
             if (text !== "" && !/^hotkey:/m.test(text))
-                runQuietExit("notify-send -a 'DMS AI Agent' 'Hotkey not applied' " + shellQuote(text.substring(0, 200)), function() {});
+                runQuietExit("dms notify --app 'DMS AI Agent' 'Hotkey not applied' " + shellQuote(text.substring(0, 200)), function() {});
         });
     }
 
@@ -639,7 +639,7 @@ Singleton {
     // --- Notification ---
     function notifyIfHidden(text) {
         if (popoutVisible) return;
-        runQuietExit("notify-send -a 'DMS Agent' -i smart_toy 'Agent' " + shellQuote(String(text).substring(0, 100)), function() {});
+        runQuietExit("dms notify --app " + shellQuote(pillLabel) + " --icon smart_toy 'Agent' " + shellQuote(String(text).substring(0, 100)), function() {});
     }
 
     // --- History (reads from Claude CLI session files) ---
