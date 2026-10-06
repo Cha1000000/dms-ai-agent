@@ -66,6 +66,34 @@ PluginComponent {
         }
     }
 
+    // The size picked in the chat goes to the same setting the slider uses. Both
+    // monitors' instances see the signal, so only one write is made, and a quick
+    // series of wheel ticks becomes a single write.
+    property int pendingFontSize: -1
+    Timer {
+        id: fontSizeSaveTimer
+        interval: 400
+        onTriggered: {
+            if (!root.pluginService || root.pendingFontSize < 0) return;
+            if (parseInt(root.pluginData.bubbleFontSize) !== root.pendingFontSize)
+                root.pluginService.savePluginData(root.pluginId, "bubbleFontSize", root.pendingFontSize);
+            root.pendingFontSize = -1;
+        }
+    }
+    Connections {
+        target: AgentService
+        function onBubbleFontSizeChosen(size) {
+            root.pendingFontSize = size;
+            fontSizeSaveTimer.restart();
+        }
+        // Both monitors' instances get the signal; the second one finds the value
+        // already stored and skips the write.
+        function onSettingChosen(key, value) {
+            if (!root.pluginService || root.pluginData[key] === value) return;
+            root.pluginService.savePluginData(root.pluginId, key, value);
+        }
+    }
+
     onPluginDataChanged: {
         loadPanelPositions();
         if (!pluginData) return;
@@ -76,7 +104,8 @@ PluginComponent {
         AgentService.backgroundOpacity = parseInt(pluginData.backgroundOpacity) || 100;
         // The old "Extended Thinking" toggle did nothing but change the status text;
         // whoever had it on gets "high".
-        AgentService.effort = pluginData.effort || (pluginData.extendedThinking === true ? "high" : "");
+        // "" is a real choice (Auto), so only a missing key falls back.
+        AgentService.effort = pluginData.effort !== undefined ? pluginData.effort : (pluginData.extendedThinking === true ? "high" : "");
         if (pluginData.systemPrompt) AgentService.systemPrompt = pluginData.systemPrompt;
         AgentService.pillLabel = pluginData.pillLabel || "Jarvis";
         AgentService.voiceModel = pluginData.voiceModel || "auto";

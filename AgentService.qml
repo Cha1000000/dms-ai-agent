@@ -104,6 +104,32 @@ Singleton {
     // Set from the plugin settings (DmsAgent.qml).
     property int maxTokens: 1024
     property int bubbleFontSize: 13
+    // Same limits as the slider in the settings. Changed from the chat itself
+    // (Ctrl + wheel, Ctrl + / Ctrl - / Ctrl 0); DmsAgent.qml stores the result.
+    readonly property int bubbleFontSizeMin: 11
+    readonly property int bubbleFontSizeMax: 22
+    readonly property int bubbleFontSizeDefault: 13
+    signal bubbleFontSizeChosen(int size)
+    // Model and effort picked in the chat's dropdowns; DmsAgent.qml stores them
+    // in the same settings the settings page edits, so they survive a restart.
+    signal settingChosen(string key, var value)
+
+    function chooseModel(id) {
+        claudeModel = id;
+        settingChosen("claudeModel", id);
+    }
+
+    function chooseEffort(level) {
+        effort = level;
+        settingChosen("effort", level);
+    }
+
+    function setBubbleFontSize(size) {
+        const clamped = Math.max(bubbleFontSizeMin, Math.min(bubbleFontSizeMax, size));
+        if (clamped === bubbleFontSize) return;
+        bubbleFontSize = clamped;
+        bubbleFontSizeChosen(clamped);
+    }
     // Доля высоты монитора, которую занимает окно чата. Фиксированная высота
     // выглядела по-разному на широком и на вертикальном экране.
     property int panelHeightPercent: 75

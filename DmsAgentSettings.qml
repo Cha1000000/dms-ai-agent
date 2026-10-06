@@ -27,6 +27,14 @@ PluginSettings {
         return props["node.description"] || node.description || node.nickname || node.name;
     }
 
+    // SliderSetting reads its stored value synchronously in Component.onCompleted,
+    // before the host has handed over pluginService, so it silently keeps the
+    // default and shows it after the settings are reopened (String/Toggle settings
+    // defer the read with Qt.callLater and are fine). Do the same here.
+    component SavedSlider: SliderSetting {
+        Component.onCompleted: Qt.callLater(loadValue)
+    }
+
     // Properties of a node are only populated while something holds it.
     PwObjectTracker { objects: root.micNodes }
 
@@ -125,7 +133,7 @@ PluginSettings {
                     color: Theme.surfaceText
                 }
 
-                SliderSetting {
+                SavedSlider {
                     settingKey: "bubbleFontSize"
                     label: "Message Text Size"
                     description: "Font size in the chat bubbles. Larger is easier to read at a glance."
@@ -135,7 +143,7 @@ PluginSettings {
                     unit: "px"
                 }
 
-                SliderSetting {
+                SavedSlider {
                     settingKey: "panelHeightPercent"
                     label: "Chat Height"
                     description: "How much of the monitor's height the chat window takes."
@@ -145,7 +153,7 @@ PluginSettings {
                     unit: "%"
                 }
 
-                SliderSetting {
+                SavedSlider {
                     settingKey: "backgroundOpacity"
                     label: "Background Transparency"
                     description: "Transparency of the chat window and message bubbles. 100 = opaque, 0 = fully transparent."

@@ -11,6 +11,23 @@ Item {
 
     signal escapePressed()
 
+    // Text size without opening the settings: Ctrl + wheel, Ctrl + "+" / "-"
+    // (main row or numpad), Ctrl + 0 for the default.
+    function handleZoomKey(event) {
+        if (!(event.modifiers & Qt.ControlModifier)) return;
+        if (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal) AgentService.setBubbleFontSize(AgentService.bubbleFontSize + 1);
+        else if (event.key === Qt.Key_Minus) AgentService.setBubbleFontSize(AgentService.bubbleFontSize - 1);
+        else if (event.key === Qt.Key_0) AgentService.setBubbleFontSize(AgentService.bubbleFontSizeDefault);
+        else return;
+        event.accepted = true;
+    }
+
+    // Keys the focused item doesn't take bubble up to here (e.g. from the
+    // read-only bubble text). The input field calls handleZoomKey itself: numpad
+    // keys carry KeypadModifier next to Ctrl, so TextEdit no longer sees a Ctrl
+    // shortcut, types the "+" and swallows the event.
+    Keys.onPressed: function(event) { handleZoomKey(event); }
+
     // Copying a bubble takes the focus away from the input field, so it is handed
     // straight back — otherwise typing silently goes nowhere after a copy.
     function copyToClipboard(text) {
@@ -378,6 +395,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
+                    Keys.onPressed: function(event) { chatRoot.handleZoomKey(event); }
                     Keys.onReturnPressed: function(event) {
                         if (event.modifiers & Qt.ShiftModifier) event.accepted = false;
                         else { event.accepted = true; sendCurrentMessage(); }
@@ -634,7 +652,7 @@ Item {
                         Item { Layout.fillWidth: true }
                         DankIcon { visible: AgentService.isCurrentModel(modelData); name: "check"; color: Theme.primary; size: 14 }
                     }
-                    MouseArea { id: optArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.claudeModel = modelData.id; modelDropdown.visible = false; } }
+                    MouseArea { id: optArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.chooseModel(modelData.id); modelDropdown.visible = false; } }
                 }
             }
         }
@@ -664,7 +682,7 @@ Item {
                         Item { Layout.fillWidth: true }
                         DankIcon { visible: AgentService.activeEffort === modelData; name: "check"; color: Theme.primary; size: 14 }
                     }
-                    MouseArea { id: effArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.effort = modelData; effortDropdown.visible = false; } }
+                    MouseArea { id: effArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.chooseEffort(modelData); effortDropdown.visible = false; } }
                 }
             }
         }
@@ -1183,6 +1201,25 @@ Item {
         messageModel.clear();
         loadMessages();
         inputField.forceActiveFocus();
+    }
+
+    // Ctrl + wheel over any part of the chat. A MouseArea rather than a
+    // WheelHandler: under Quickshell on Wayland the handler never receives wheel
+    // events. It sits on top of everything but takes no buttons and no hover, and
+    // a wheel without Ctrl is handed on, so scrolling and clicks work as before.
+    // A notch is 120; touchpads send many small deltas, so they add up.
+    MouseArea {
+        anchors.fill: parent
+        z: 100
+        acceptedButtons: Qt.NoButton
+        property real wheelRemainder: 0
+        onWheel: function(wheel) {
+            if (!(wheel.modifiers & Qt.ControlModifier)) { wheel.accepted = false; return; }
+            wheelRemainder += wheel.angleDelta.y;
+            const steps = Math.trunc(wheelRemainder / 120);
+            wheelRemainder -= steps * 120;
+            if (steps !== 0) AgentService.setBubbleFontSize(AgentService.bubbleFontSize + steps);
+        }
     }
 
     Component.onCompleted: { loadMessages(); inputField.forceActiveFocus(); }
