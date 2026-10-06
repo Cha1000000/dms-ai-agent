@@ -520,20 +520,40 @@ Singleton {
         panelRequested(name);
     }
 
-    // Where the chat sits on each monitor: "left" | "center" | "right", keyed by
-    // screen name. The monitors differ enough (one wide, one portrait) that a
-    // single shared setting would suit neither.
+    // Where the chat sits on each monitor, keyed by screen name: a preset
+    // ("left" | "center" | "right") or, after Ctrl + drag, a number from 0 (left
+    // edge) to 1 (right edge) — the share of the free width left of the chat. The
+    // monitors differ enough (one wide, one portrait) that a single shared setting
+    // would suit neither.
     property var panelPositions: ({})
     property bool positionsLoaded: false
 
     signal panelPositionChanged(string screenName, string position)
 
+    // The preset name, or "custom" for a dragged position (no button is lit).
     function panelPositionFor(screenName) {
-        return panelPositions[screenName] || "center";
+        var v = panelPositions[screenName];
+        if (v === undefined || v === null) return "center";
+        return typeof v === "number" ? "custom" : v;
+    }
+
+    function panelFractionFor(screenName) {
+        var v = panelPositions[screenName];
+        if (typeof v === "number") return Math.max(0, Math.min(1, v));
+        return v === "left" ? 0 : (v === "right" ? 1 : 0.5);
+    }
+
+    // A drop close to a preset snaps to it, so its button lights up again.
+    function setPanelFraction(screenName, fraction) {
+        var f = Math.max(0, Math.min(1, fraction));
+        var presets = { left: 0, center: 0.5, right: 1 };
+        for (var name in presets)
+            if (Math.abs(f - presets[name]) < 0.015) { setPanelPosition(screenName, name); return; }
+        setPanelPosition(screenName, Math.round(f * 10000) / 10000);
     }
 
     function setPanelPosition(screenName, position) {
-        if (panelPositionFor(screenName) === position) return;
+        if (panelPositions[screenName] === position || (panelPositions[screenName] === undefined && position === "center")) return;
         var next = {};
         for (var key in panelPositions) next[key] = panelPositions[key];
         next[screenName] = position;

@@ -201,6 +201,11 @@ The three buttons next to *history* pin the chat to the **left edge**, the **cen
 **right edge** of the monitor. The open window moves as you press them, and the choice is kept for
 each monitor separately — handy when one screen is wide and another is portrait.
 
+Hold **Ctrl** and drag the chat with the left mouse button to put it anywhere along the bottom of
+the screen. Near an edge or the centre it snaps to that preset. Drag past the edge of the monitor
+and let go to move the chat to the neighbouring monitor (it dims while the drop would change
+monitor). The chat window needs keyboard focus for Ctrl to register, which it normally has.
+
 ## Updating
 
 Use **Update** in DMS (Settings → Plugins) or re-run `install.sh`. DMS updates plugins with

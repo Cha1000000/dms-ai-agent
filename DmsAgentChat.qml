@@ -10,6 +10,12 @@ Item {
     id: chatRoot
 
     signal escapePressed()
+    // Ctrl + left button drag moves the chat; the window's owner does the moving.
+    // Coordinates are the pointer's in the window, which stay put while the chat
+    // slides under it (an item's own coordinates would not).
+    signal dragStarted(real windowX, real windowY)
+    signal dragMoved(real windowX, real windowY)
+    signal dragFinished(real windowX, real windowY)
 
     // Text size without opening the settings: Ctrl + wheel, Ctrl + "+" / "-"
     // (main row or numpad), Ctrl + 0 for the default.
@@ -1201,6 +1207,33 @@ Item {
         messageModel.clear();
         loadMessages();
         inputField.forceActiveFocus();
+    }
+
+    // Ctrl + left button drag over any part of the chat. A press without Ctrl is
+    // handed on, so clicks, text selection and the buttons work as before. Ctrl is
+    // only seen while the window has keyboard focus, which the chat normally has.
+    MouseArea {
+        id: dragArea
+        anchors.fill: parent
+        z: 99
+        acceptedButtons: Qt.LeftButton
+        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.ArrowCursor
+        function windowPoint(mouse) { return mapToItem(null, mouse.x, mouse.y); }
+        onPressed: function(mouse) {
+            if (!(mouse.modifiers & Qt.ControlModifier)) { mouse.accepted = false; return; }
+            var p = windowPoint(mouse);
+            chatRoot.dragStarted(p.x, p.y);
+        }
+        onPositionChanged: function(mouse) {
+            if (!pressed) return;
+            var p = windowPoint(mouse);
+            chatRoot.dragMoved(p.x, p.y);
+        }
+        onReleased: function(mouse) {
+            var p = windowPoint(mouse);
+            chatRoot.dragFinished(p.x, p.y);
+        }
+        onCanceled: chatRoot.dragFinished(-1, -1)
     }
 
     // Ctrl + wheel over any part of the chat. A MouseArea rather than a

@@ -151,13 +151,66 @@ PluginComponent {
         screen: root.parentScreen || (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
         color: "transparent"
 
-        readonly property string panelPosition: AgentService.panelPositionFor(root.screenName)
-
-        // With neither side anchored the compositor centres the window; anchoring
-        // one side pins it there. That is the whole of the left/centre/right choice.
+        // The window spans the monitor and the chat is placed inside it, so it can
+        // be dragged smoothly (moving a layer-shell window means a round trip to
+        // the compositor per step). Only the chat itself takes input: everything
+        // else is masked out and clicks go through to the windows underneath.
+        readonly property real chatWidth: 660
+        readonly property real chatFraction: AgentService.panelFractionFor(root.screenName)
         anchors.bottom: true
-        anchors.left: panelPosition === "left"
-        anchors.right: panelPosition === "right"
+        anchors.left: true
+        anchors.right: true
+        mask: Region { item: slot }
+
+        // Ctrl + drag state; positions are in window coordinates.
+        property bool dragging: false
+        property bool dragOutside: false
+        property real dragX: 0
+        property real dragGrab: 0
+        // The slide is only animated for a position button, not for the first layout.
+        property bool animatePosition: false
+
+        function clampX(x, width) { return Math.max(0, Math.min(Math.max(0, width - chatWidth), x)); }
+
+        // The monitor under the pointer, by its global position; the one whose
+        // vertical span also contains it wins when screens are stacked.
+        function screenAt(px, py) {
+            if (!screen) return null;
+            var gx = screen.x + px, gy = screen.y + py, found = null;
+            for (var i = 0; i < Quickshell.screens.length; i++) {
+                var s = Quickshell.screens[i];
+                if (gx < s.x || gx >= s.x + s.width) continue;
+                if (gy >= s.y && gy < s.y + s.height) return s;
+                if (!found) found = s;
+            }
+            return found;
+        }
+
+        function finishDrag(px, py) {
+            if (!dragging) return;
+            var target = px < 0 && py < 0 ? null : screenAt(px, py);
+            if (target && target.name !== root.screenName) {
+                // Dropped on another monitor: the chat reappears there, under the pointer.
+                var tx = clampX(screen.x + px - target.x - dragGrab, target.width);
+                var free = Math.max(1, target.width - chatWidth);
+                AgentService.setPanelFraction(target.name, tx / free);
+                dragging = false; dragOutside = false;
+                AgentService.showPanelOn(target.name);
+                return;
+            }
+            AgentService.setPanelFraction(root.screenName, dragX / Math.max(1, width - chatWidth));
+            dragging = false; dragOutside = false;
+        }
+
+        Timer { id: slideTimer; interval: 300; onTriggered: agentPanel.animatePosition = false }
+        Connections {
+            target: AgentService
+            function onPanelPositionChanged(name, position) {
+                if (name !== root.screenName || agentPanel.dragging) return;
+                agentPanel.animatePosition = true;
+                slideTimer.restart();
+            }
+        }
 
         WlrLayershell.layer: WlrLayershell.Top
         WlrLayershell.namespace: "dms:agent"
@@ -165,7 +218,6 @@ PluginComponent {
         WlrLayershell.keyboardFocus: isVisible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         WlrLayershell.margins.bottom: 44
 
-        implicitWidth: 660
         // Отсчитывается от монитора, на котором панель показана, за вычетом
         // отступа снизу; на маленьком экране не должна упереться в бар.
         implicitHeight: {
@@ -174,19 +226,45 @@ PluginComponent {
         }
 
         Item {
-            id: animContainer
-            anchors.fill: parent
-            anchors.margins: 10
-            scale: agentPanel.animScale
-            opacity: agentPanel.animOpacity
-            transformOrigin: Item.Bottom
+            id: slot
+            width: Math.min(agentPanel.chatWidth, agentPanel.width)
+            height: parent.height
+            x: agentPanel.dragging ? agentPanel.dragX
+                                   : agentPanel.chatFraction * Math.max(0, agentPanel.width - width)
+            Behavior on x {
+                enabled: agentPanel.animatePosition && !agentPanel.dragging
+                NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+            }
 
-            DmsAgentChat {
-                id: agentChat
-                active: agentPanel.isVisible
-                screenName: root.screenName
+            Item {
+                id: animContainer
                 anchors.fill: parent
-                onEscapePressed: agentPanel.hide()
+                anchors.margins: 10
+                scale: agentPanel.animScale
+                // Dimmed while the pointer is past the edge: letting go there moves
+                // the chat to the next monitor.
+                opacity: agentPanel.animOpacity * (agentPanel.dragOutside ? 0.55 : 1)
+                transformOrigin: Item.Bottom
+
+                DmsAgentChat {
+                    id: agentChat
+                    active: agentPanel.isVisible
+                    screenName: root.screenName
+                    anchors.fill: parent
+                    onEscapePressed: agentPanel.hide()
+                    onDragStarted: function(px, py) {
+                        agentPanel.dragGrab = px - slot.x;
+                        agentPanel.dragX = slot.x;
+                        agentPanel.dragging = true;
+                    }
+                    onDragMoved: function(px, py) {
+                        if (!agentPanel.dragging) return;
+                        agentPanel.dragX = agentPanel.clampX(px - agentPanel.dragGrab, agentPanel.width);
+                        var over = agentPanel.screenAt(px, py);
+                        agentPanel.dragOutside = !over || over.name !== root.screenName;
+                    }
+                    onDragFinished: function(px, py) { agentPanel.finishDrag(px, py); }
+                }
             }
         }
 
