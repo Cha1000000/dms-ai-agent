@@ -135,6 +135,9 @@ Singleton {
     property int panelHeightPercent: 75
     // Прозрачность фона окна чата и баблов сообщений (0–100, где 100 = непрозрачно).
     property int backgroundOpacity: 100
+    // Пузыри и поле ввода как стекло: полупрозрачная подкраска, блик по кромке,
+    // размытие фона под каждым пузырём (если композитор его поддерживает).
+    property bool liquidGlass: false
     property string pillLabel: "Jarvis"
     property string voiceModel: "auto"
     property string voiceLanguage: "auto"

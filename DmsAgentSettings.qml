@@ -164,6 +164,13 @@ PluginSettings {
                 }
 
                 ToggleSetting {
+                    settingKey: "liquidGlass"
+                    label: "Liquid Glass"
+                    description: "Translucent glass bubbles with a highlighted edge and the background blurred behind each one. Replaces Background Transparency while on. Needs Blur enabled in DMS; without it the bubbles stay solid."
+                    defaultValue: false
+                }
+
+                ToggleSetting {
                     settingKey: "autoUpdate"
                     label: "Auto-update"
                     description: "Pull new versions from the plugin's repository once per boot and restart the shell to apply them. Local edits are never touched."

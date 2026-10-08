@@ -4,6 +4,7 @@ import QtQuick.Effects
 import Quickshell
 import qs.Common
 import qs.Widgets
+import qs.Services
 import "markdown2html.js" as Md
 
 Item {
@@ -142,6 +143,66 @@ Item {
     // Set by the panel: several instances exist (one per bar), only the shown one takes dictation.
     property bool active: true
 
+    // Liquid glass: translucent bubbles over a blurred background. Without blur
+    // (switched off in DMS, or not supported by the compositor) a translucent
+    // bubble is hard to read, so the bubbles stay solid then.
+    readonly property bool glassOn: AgentService.liquidGlass && BlurService.enabled
+    function bubbleColor(base, glassAlpha) {
+        return Theme.withAlpha(base, glassOn ? glassAlpha : AgentService.backgroundOpacity / 100);
+    }
+
+    // Everything that gets its own patch of blur. The panel builds the blur
+    // region from this list; each entry's own radius rounds its patch.
+    // A reload adds or drops every bubble at once, so the list is published
+    // once per event loop pass rather than once per bubble.
+    property var glassItems: []
+    property var glassPending: []
+    function glassReg(item) { glassPending.push(item); Qt.callLater(glassPublish); }
+    function glassUnreg(item) {
+        var i = glassPending.indexOf(item);
+        if (i >= 0) glassPending.splice(i, 1);
+        Qt.callLater(glassPublish);
+    }
+    function glassPublish() { glassItems = glassPending.slice(); }
+
+    // A region is a fixed rect in window coordinates, so it has to be redone
+    // whenever an item moves: scrolling, a growing bubble, the open animation.
+    // Anything that moves one bumps the tick, and the regions re-read it.
+    // Moves come in bursts (one token moves every bubble below it), and a bubble
+    // can move before its parent has laid it out, so the bump is deferred to
+    // after the layout pass and coalesced. A hidden chat (one instance per bar)
+    // does not track anything.
+    property int glassTick: 0
+    property bool glassBumpQueued: false
+    function bumpGlass() {
+        if (!glassOn || !active || glassBumpQueued) return;
+        glassBumpQueued = true;
+        Qt.callLater(function() { glassBumpQueued = false; glassTick++; });
+    }
+    // The part of a bubble inside the feed, in the bubble's own coordinates. A
+    // bubble scrolled past the edge must not leave blur behind, and the part
+    // that is left is what gets the glass. The input card is never cut.
+    function glassPart(item) {
+        // A bubble being destroyed can still be asked once before the list drops it.
+        if (!item || !item.parent) return Qt.rect(0, 0, 0, 0);
+        if (item === inputCard) return Qt.rect(0, 0, item.width, item.height);
+        var f = messageFlick.mapToItem(item, 0, 0);
+        var top = Math.max(0, f.y), bottom = Math.min(item.height, f.y + messageFlick.height);
+        var left = Math.max(0, f.x), right = Math.min(item.width, f.x + messageFlick.width);
+        if (bottom <= top || right <= left) return Qt.rect(0, 0, 0, 0);
+        return Qt.rect(left, top, right - left, bottom - top);
+    }
+    // The same part in window coordinates, for the blur region.
+    function glassRect(item) {
+        var p = glassPart(item);
+        if (p.width <= 0 || p.height <= 0) return p;
+        var a = item.mapToItem(null, p.x, p.y), b = item.mapToItem(null, p.x + p.width, p.y + p.height);
+        // Region coordinates are integers: round outwards, so the patch never ends
+        // up smaller than the tint drawn over it.
+        var x0 = Math.floor(a.x), y0 = Math.floor(a.y);
+        return Qt.rect(x0, y0, Math.ceil(b.x) - x0, Math.ceil(b.y) - y0);
+    }
+
     // Which monitor this chat belongs to — the position buttons are per-monitor.
     property string screenName: ""
 
@@ -254,10 +315,18 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         height: inputCol.height
-        radius: 20; color: Theme.withAlpha(Theme.surfaceContainer, AgentService.backgroundOpacity / 100)
+        radius: 20; color: chatRoot.bubbleColor(Theme.surfaceContainer, 0.55)
         z: 10
 
-        layer.enabled: true
+        Component.onCompleted: chatRoot.glassReg(inputCard)
+        Component.onDestruction: chatRoot.glassUnreg(inputCard)
+        onYChanged: chatRoot.bumpGlass()
+        onHeightChanged: chatRoot.bumpGlass()
+
+        Loader { anchors.fill: parent; active: chatRoot.glassOn; sourceComponent: GlassSpecular { radius: 20 } }
+
+        // A shadow under a translucent card would darken what the glass shows.
+        layer.enabled: !chatRoot.glassOn
         layer.effect: MultiEffect {
             shadowEnabled: true; shadowBlur: 0.8
             shadowVerticalOffset: -2; shadowColor: Theme.withAlpha(Theme.shadow || "#000000", 0.4)
@@ -629,7 +698,7 @@ Item {
     }
 
     // --- Neon rims (behind the cards they outline) ---
-    NeonBorder { target: inputCard; radius: 20 }
+    NeonBorder { target: inputCard; radius: 20; ring: chatRoot.glassOn }
     NeonBorder { target: modelDropdown; radius: 12; glowOpacity: 0.45 }
     NeonBorder { target: effortDropdown; radius: 12; glowOpacity: 0.45 }
     NeonBorder { target: historyDropdown; radius: 12; glowOpacity: 0.45 }
@@ -974,6 +1043,7 @@ Item {
                 id: messagesContent
                 width: parent.width
                 spacing: 6
+                onYChanged: chatRoot.bumpGlass()
 
                 Repeater {
                     model: ListModel { id: messageModel }
@@ -987,12 +1057,16 @@ Item {
                             return null;
                         }
                         property string content: model.msgContent || ""
+                        onYChanged: chatRoot.bumpGlass()
                     }
                 }
             }
         }
 
-        onContentHeightChanged: { Qt.callLater(scrollToEnd); }
+        onContentHeightChanged: { Qt.callLater(scrollToEnd); chatRoot.bumpGlass(); }
+        onContentYChanged: chatRoot.bumpGlass()
+        onHeightChanged: chatRoot.bumpGlass()
+        onWidthChanged: chatRoot.bumpGlass()
     }
 
     // --- Bubbles (no shadows to avoid clipping artifacts) ---
@@ -1004,7 +1078,17 @@ Item {
                 id: toolBubble; anchors.left: parent.left
                 width: Math.min(parent.width * 0.85, toolIcon.width + toolText.implicitWidth + 30)
                 height: 28; radius: 14
-                color: Theme.surface; border.width: 1; border.color: Theme.outlineVariant
+                color: chatRoot.glassOn ? "transparent" : Theme.surface
+                border.width: chatRoot.glassOn ? 0 : 1; border.color: Theme.outlineVariant
+
+                Component.onCompleted: chatRoot.glassReg(toolBubble)
+                Component.onDestruction: chatRoot.glassUnreg(toolBubble)
+                onWidthChanged: chatRoot.bumpGlass()
+
+                Loader {
+                    anchors.fill: parent; active: chatRoot.glassOn
+                    sourceComponent: GlassTint { chat: chatRoot; bubble: toolBubble; color: Theme.withAlpha(Theme.surfaceContainer, 0.55) }
+                }
 
                 DankIcon {
                     id: toolIcon; name: "build"; color: "#FF9800"; size: 13
@@ -1049,7 +1133,18 @@ Item {
                 id: uRect; anchors.right: parent.right
                 width: Math.min(parent.width * 0.8, uMetric.implicitWidth + 28)
                 height: uTxt.implicitHeight + 11
-                radius: 16; color: Theme.withAlpha(Theme.primary, AgentService.backgroundOpacity / 100)
+                radius: 16; color: chatRoot.glassOn ? "transparent" : Theme.withAlpha(Theme.primary, AgentService.backgroundOpacity / 100)
+                onXChanged: chatRoot.bumpGlass()
+
+                Component.onCompleted: chatRoot.glassReg(uRect)
+                Component.onDestruction: chatRoot.glassUnreg(uRect)
+                onWidthChanged: chatRoot.bumpGlass()
+                onHeightChanged: chatRoot.bumpGlass()
+
+                Loader {
+                    anchors.fill: parent; active: chatRoot.glassOn
+                    sourceComponent: GlassTint { chat: chatRoot; bubble: uRect; color: Theme.withAlpha(Theme.primary, 0.75) }
+                }
 
                 HoverHandler { id: uHover }
 
@@ -1111,7 +1206,17 @@ Item {
                 id: aRect; anchors.left: parent.left
                 width: Math.min(parent.width * 0.85, aMetric.implicitWidth + 28)
                 height: aTxt.implicitHeight + 16
-                radius: 16; color: Theme.withAlpha(Theme.surfaceContainer, AgentService.backgroundOpacity / 100)
+                radius: 16; color: chatRoot.glassOn ? "transparent" : Theme.withAlpha(Theme.surfaceContainer, AgentService.backgroundOpacity / 100)
+
+                Component.onCompleted: chatRoot.glassReg(aRect)
+                Component.onDestruction: chatRoot.glassUnreg(aRect)
+                onWidthChanged: chatRoot.bumpGlass()
+                onHeightChanged: chatRoot.bumpGlass()
+
+                Loader {
+                    anchors.fill: parent; active: chatRoot.glassOn
+                    sourceComponent: GlassTint { chat: chatRoot; bubble: aRect; color: Theme.withAlpha(Theme.surfaceContainer, 0.55) }
+                }
 
                 HoverHandler { id: aHover }
 

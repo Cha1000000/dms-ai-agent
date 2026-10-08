@@ -102,6 +102,7 @@ PluginComponent {
         AgentService.bubbleFontSize = parseInt(pluginData.bubbleFontSize) || 13;
         AgentService.panelHeightPercent = parseInt(pluginData.panelHeightPercent) || 75;
         AgentService.backgroundOpacity = parseInt(pluginData.backgroundOpacity) || 100;
+        AgentService.liquidGlass = pluginData.liquidGlass === true;
         // The old "Extended Thinking" toggle did nothing but change the status text;
         // whoever had it on gets "high".
         // "" is a real choice (Auto), so only a missing key falls back.
@@ -270,6 +271,20 @@ PluginComponent {
 
         Behavior on animScale {
             NumberAnimation { id: scaleAnim; duration: 250; easing.type: Easing.OutCubic }
+        }
+
+        Loader {
+            active: agentChat.glassOn
+            sourceComponent: GlassRegion {
+                targetWindow: agentPanel
+                chat: agentChat
+                shown: agentPanel.isVisible
+                lensScale: agentPanel.animScale
+            }
+        }
+        Connections {
+            target: slot
+            function onXChanged() { agentChat.bumpGlass(); }
         }
 
         Behavior on animOpacity {
