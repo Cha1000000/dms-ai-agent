@@ -148,8 +148,15 @@ Item {
     // bubble is hard to read, so the bubbles stay solid then.
     readonly property bool glassOn: AgentService.liquidGlass && AgentTheme.glassAllowed && BlurService.enabled
     readonly property real panelAlpha: AgentService.backgroundOpacity / 100
+    // The slider also sets how dense the glass tint is: the default 94% keeps the tint as designed,
+    // lower is clearer, and 100% is nearly solid.
+    function glassTint(alpha) {
+        var op = AgentService.backgroundOpacity;
+        var k = op <= 94 ? op / 94 : 1 + (op - 94) / 6 * 0.7;
+        return Math.min(0.97, alpha * k);
+    }
     function bubbleColor(base, glassAlpha) {
-        return Theme.withAlpha(base, glassOn ? glassAlpha : panelAlpha);
+        return Theme.withAlpha(base, glassOn ? glassTint(glassAlpha) : panelAlpha);
     }
 
     // Everything that gets its own patch of blur. The panel builds the blur
@@ -705,7 +712,7 @@ Item {
     }
 
     // --- Neon rims (behind the cards they outline) ---
-    NeonBorder { target: inputCard; radius: 20; ring: chatRoot.glassOn }
+    NeonBorder { target: inputCard; radius: 20; ring: chatRoot.glassOn || chatRoot.panelAlpha < 0.99 }
     NeonBorder { target: modelDropdown; radius: 12; glowOpacity: 0.45 }
     NeonBorder { target: effortDropdown; radius: 12; glowOpacity: 0.45 }
     NeonBorder { target: historyDropdown; radius: 12; glowOpacity: 0.45 }
@@ -1200,7 +1207,7 @@ Item {
 
                 Loader {
                     anchors.fill: parent; active: chatRoot.glassOn
-                    sourceComponent: GlassTint { chat: chatRoot; bubble: toolBubble; color: Theme.withAlpha(AgentTheme.surfaceContainer, 0.55) }
+                    sourceComponent: GlassTint { chat: chatRoot; bubble: toolBubble; color: Theme.withAlpha(AgentTheme.surfaceContainer, chatRoot.glassTint(0.55)) }
                 }
 
                 DankIcon {
@@ -1256,7 +1263,7 @@ Item {
 
                 Loader {
                     anchors.fill: parent; active: chatRoot.glassOn
-                    sourceComponent: GlassTint { chat: chatRoot; bubble: uRect; color: Theme.withAlpha(AgentTheme.primary, 0.75) }
+                    sourceComponent: GlassTint { chat: chatRoot; bubble: uRect; color: Theme.withAlpha(AgentTheme.primary, chatRoot.glassTint(0.75)) }
                 }
 
                 HoverHandler { id: uHover }
@@ -1328,7 +1335,7 @@ Item {
 
                 Loader {
                     anchors.fill: parent; active: chatRoot.glassOn
-                    sourceComponent: GlassTint { chat: chatRoot; bubble: aRect; color: Theme.withAlpha(AgentTheme.surfaceContainer, 0.55) }
+                    sourceComponent: GlassTint { chat: chatRoot; bubble: aRect; color: Theme.withAlpha(AgentTheme.surfaceContainer, chatRoot.glassTint(0.55)) }
                 }
 
                 HoverHandler { id: aHover }

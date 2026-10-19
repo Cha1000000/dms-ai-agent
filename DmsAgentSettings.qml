@@ -274,7 +274,7 @@ PluginSettings {
                 SavedSlider {
                     settingKey: "backgroundOpacity"
                     label: "Background Transparency"
-                    description: "Transparency of the chat window and message bubbles. 100 = opaque, 0 = fully transparent."
+                    description: "Transparency of the chat window and message bubbles. Lower is more transparent; with Liquid Glass on it sets how dense the glass tint is."
                     defaultValue: 100
                     minimum: 30
                     maximum: 100
@@ -284,7 +284,7 @@ PluginSettings {
                 ToggleSetting {
                     settingKey: "liquidGlass"
                     label: "Liquid Glass"
-                    description: "Translucent glass bubbles with a highlighted edge and the background blurred behind each one. Replaces Background Transparency while on. Needs Blur enabled in DMS; without it the bubbles stay solid."
+                    description: "Translucent glass bubbles with a highlighted edge and the background blurred behind each one. Needs Blur enabled in DMS; without it the bubbles stay solid."
                     defaultValue: false
                 }
 
