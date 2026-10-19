@@ -11,7 +11,7 @@ Singleton {
     id: root
 
     property string preset: "jarvis"
-    // Key colors: { accent, panel, text, outline, neonFrom, neonTo }; "" = not set.
+    // Key colors: { accent, panel, text, outline, neonFrom, neonTo }; absent = not set.
     property var custom: ({})
     // Per-role overrides of the advanced editor: { role: "#rrggbb" }.
     property var advanced: ({})
@@ -96,19 +96,31 @@ Singleton {
     readonly property color neon2: pick("neon2", "#9B5CFF")
     readonly property color neon3: pick("neon3", "#E14BFF")
 
-    // The settings come as plain strings; "" and bad values mean "not set".
+    readonly property var roleNames: ["primary", "primaryText", "surface", "surfaceContainer",
+        "surfaceContainerHighest", "surfaceVariant", "surfaceText", "surfaceVariantText",
+        "outlineVariant", "error", "warning", "neon0", "neon1", "neon2", "neon3"]
+
+    function _hex(v) { return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : ""; }
+
+    // Colors are only read while their switch is on, so turning one off falls back to the theme.
     function apply(data) {
-        var id = data.themePreset;
-        preset = presets[id] ? id : "jarvis";
-        var keys = ["accent", "panel", "text", "outline", "neonFrom", "neonTo"];
+        preset = presets[data.themePreset] ? data.themePreset : "jarvis";
         var c = {};
-        for (var i = 0; i < keys.length; i++) {
-            var v = data["themeColor_" + keys[i]];
-            if (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v)) c[keys[i]] = v;
+        if (data.themeCustomOn === true) {
+            var keys = ["accent", "panel", "text", "outline", "neonFrom", "neonTo"];
+            for (var i = 0; i < keys.length; i++) {
+                var v = _hex(data["themeColor_" + keys[i]]);
+                if (v) c[keys[i]] = v;
+            }
         }
         custom = c;
-        var adv = data.themeAdvanced;
-        if (typeof adv === "string") { try { adv = JSON.parse(adv); } catch (e) { adv = ({}); } }
-        advanced = (adv && typeof adv === "object") ? adv : ({});
+        var adv = {};
+        if (data.themeAdvancedOn === true) {
+            for (var j = 0; j < roleNames.length; j++) {
+                var w = _hex(data["themeAdv_" + roleNames[j]]);
+                if (w) adv[roleNames[j]] = w;
+            }
+        }
+        advanced = adv;
     }
 }

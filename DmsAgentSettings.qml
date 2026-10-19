@@ -126,6 +126,113 @@ PluginSettings {
 
         StyledRect {
             width: parent.width
+            height: themeCol.implicitHeight + Theme.spacingL * 2
+            radius: Theme.cornerRadius
+            color: Theme.surfaceContainerHigh
+
+            Column {
+                id: themeCol
+                x: Theme.spacingL
+                y: Theme.spacingL
+                width: parent.width - Theme.spacingL * 2
+                spacing: Theme.spacingM
+
+                StyledText {
+                    text: "Theme & Size"
+                    font.pixelSize: Theme.fontSizeMedium
+                    font.weight: Font.Bold
+                    color: Theme.surfaceText
+                }
+
+                SelectionSetting {
+                    settingKey: "themePreset"
+                    label: "Theme"
+                    description: "Jarvis is the signature look: your DMS colors with a neon gradient rim. DMS Colors is the same without the neon."
+                    defaultValue: "jarvis"
+                    options: [
+                        { label: "Jarvis (neon)", value: "jarvis" },
+                        { label: "DMS Colors", value: "dms" },
+                        { label: "Umbrella (red neon)", value: "umbrella" },
+                        { label: "Dark neutral", value: "dark" },
+                        { label: "Light", value: "light" }
+                    ]
+                }
+
+                SavedSlider {
+                    settingKey: "uiScale"
+                    label: "Window Scale"
+                    description: "Zooms the whole chat window: text, buttons, corners and spacing. Message Text Size is applied on top of it."
+                    defaultValue: 100
+                    minimum: 80
+                    maximum: 125
+                    unit: "%"
+                }
+
+                ToggleSetting {
+                    id: customToggle
+                    settingKey: "themeCustomOn"
+                    label: "Custom colors"
+                    description: "Override the key colors of the chosen theme."
+                    defaultValue: false
+                }
+
+                Column {
+                    width: parent.width
+                    spacing: Theme.spacingM
+                    visible: customToggle.value
+
+                    ColorSetting { settingKey: "themeColor_accent"; label: "Accent"; description: "Buttons, your messages, selection."; defaultValue: "#7aa2f7" }
+                    ColorSetting { settingKey: "themeColor_panel"; label: "Panel & bubbles"; description: "Background of the input card, assistant bubbles and menus."; defaultValue: "#1e1e24" }
+                    ColorSetting { settingKey: "themeColor_text"; label: "Text"; defaultValue: "#e6e6ea" }
+                    ColorSetting { settingKey: "themeColor_outline"; label: "Borders"; defaultValue: "#44444e" }
+                    ColorSetting { settingKey: "themeColor_neonFrom"; label: "Neon: start"; description: "Left end of the gradient rim (themes with neon)."; defaultValue: "#3ee0ff" }
+                    ColorSetting { settingKey: "themeColor_neonTo"; label: "Neon: end"; description: "Right end of the gradient rim."; defaultValue: "#e14bff" }
+                }
+
+                ToggleSetting {
+                    id: advancedToggle
+                    settingKey: "themeAdvancedOn"
+                    label: "Advanced: edit every color"
+                    description: "For fine tuning. Each color below replaces one role of the theme; it wins over the key colors above."
+                    defaultValue: false
+                }
+
+                Column {
+                    width: parent.width
+                    spacing: Theme.spacingM
+                    visible: advancedToggle.value
+
+                    Repeater {
+                        model: [
+                            { key: "primary", label: "Primary (accent, user bubble)", def: "#7aa2f7" },
+                            { key: "primaryText", label: "Text on primary", def: "#101014" },
+                            { key: "surface", label: "Tool step background", def: "#16161a" },
+                            { key: "surfaceContainer", label: "Assistant bubble, input card", def: "#1e1e24" },
+                            { key: "surfaceContainerHighest", label: "Menus and dialogs", def: "#2a2a32" },
+                            { key: "surfaceVariant", label: "Hover and secondary fills", def: "#34343d" },
+                            { key: "surfaceText", label: "Text", def: "#e6e6ea" },
+                            { key: "surfaceVariantText", label: "Muted text and icons", def: "#9a9aa5" },
+                            { key: "outlineVariant", label: "Borders", def: "#44444e" },
+                            { key: "error", label: "Danger (recording, delete)", def: "#ef4444" },
+                            { key: "warning", label: "Warning (tool steps)", def: "#ff9800" },
+                            { key: "neon0", label: "Neon 1", def: "#3ee0ff" },
+                            { key: "neon1", label: "Neon 2", def: "#4f7bff" },
+                            { key: "neon2", label: "Neon 3", def: "#9b5cff" },
+                            { key: "neon3", label: "Neon 4", def: "#e14bff" }
+                        ]
+                        delegate: ColorSetting {
+                            required property var modelData
+                            settingKey: "themeAdv_" + modelData.key
+                            label: modelData.label
+                            defaultValue: modelData.def
+                        }
+                    }
+                }
+            }
+        }
+
+        StyledRect {
+            width: parent.width
             height: shellCol.implicitHeight + Theme.spacingL * 2
             radius: Theme.cornerRadius
             color: Theme.surfaceContainerHigh

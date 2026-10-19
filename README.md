@@ -102,6 +102,10 @@ Then, in DMS:
 | Message Text Size | `13px` | font size in the chat bubbles, 11–22; also `Ctrl` + wheel or `Ctrl` + `+` / `-` in the chat, `Ctrl+0` resets |
 | Chat Height | `75%` | how much of the monitor's height the chat window takes, 40–95 |
 | Liquid Glass | off | translucent bubbles with a highlighted edge and the background blurred behind each one; replaces Background Transparency while on; needs Blur enabled in DMS (otherwise the bubbles stay solid). Lniri draws a glass lens per bubble with a `dms:agent` layer-rule |
+| Theme | `Jarvis` | `Jarvis`: the signature look (your DMS colors with a neon gradient rim); `DMS Colors`: the same without the neon; `Umbrella`, `Dark neutral`, `Light`: fixed palettes |
+| Window Scale | `100%` | zooms the whole chat window (text, buttons, corners, spacing), 80–125%; Message Text Size is applied on top |
+| Custom colors | off | overrides the key colors of the chosen theme: accent, panel and bubbles, text, borders, and the two ends of the neon gradient |
+| Advanced: edit every color | off | one color per role of the theme; wins over the key colors. Turn a switch off to go back to the theme |
 | Permissions | Ask first | *Ask first*: Allow / Deny dialog before each command or file change; *No confirmation*: runs everything immediately (`--dangerously-skip-permissions`) |
 | Auto-update | off | update from this repository once per boot and restart the shell to apply it |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
