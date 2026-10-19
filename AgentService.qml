@@ -134,10 +134,10 @@ Singleton {
         bubbleFontSize = clamped;
         bubbleFontSizeChosen(clamped);
     }
-    // Доля высоты монитора, которую занимает окно чата. Фиксированная высота
-    // выглядела по-разному на широком и на вертикальном экране.
     // Zoom of the whole chat window, in percent.
     property int uiScale: 100
+    // Доля высоты монитора, которую занимает окно чата. Фиксированная высота
+    // выглядела по-разному на широком и на вертикальном экране.
     property int panelHeightPercent: 75
     // Прозрачность фона окна чата и баблов сообщений (0–100, где 100 = непрозрачно).
     property int backgroundOpacity: 100

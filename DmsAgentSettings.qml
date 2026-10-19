@@ -181,12 +181,12 @@ PluginSettings {
                     spacing: Theme.spacingM
                     visible: customToggle.value
 
-                    ColorSetting { settingKey: "themeColor_accent"; label: "Accent"; description: "Buttons, your messages, selection."; defaultValue: "#7aa2f7" }
-                    ColorSetting { settingKey: "themeColor_panel"; label: "Panel & bubbles"; description: "Background of the input card, assistant bubbles and menus."; defaultValue: "#1e1e24" }
-                    ColorSetting { settingKey: "themeColor_text"; label: "Text"; defaultValue: "#e6e6ea" }
-                    ColorSetting { settingKey: "themeColor_outline"; label: "Borders"; defaultValue: "#44444e" }
-                    ColorSetting { settingKey: "themeColor_neonFrom"; label: "Neon: start"; description: "Left end of the gradient rim (themes with neon)."; defaultValue: "#3ee0ff" }
-                    ColorSetting { settingKey: "themeColor_neonTo"; label: "Neon: end"; description: "Right end of the gradient rim."; defaultValue: "#e14bff" }
+                    ColorSetting { settingKey: "themeColor_accent"; label: "Accent"; description: "Buttons, your messages, selection."; defaultValue: AgentTheme.primary.toString() }
+                    ColorSetting { settingKey: "themeColor_panel"; label: "Panel & bubbles"; description: "Background of the input card, assistant bubbles and menus."; defaultValue: AgentTheme.surfaceContainer.toString() }
+                    ColorSetting { settingKey: "themeColor_text"; label: "Text"; defaultValue: AgentTheme.surfaceText.toString() }
+                    ColorSetting { settingKey: "themeColor_outline"; label: "Borders"; defaultValue: AgentTheme.outlineVariant.toString() }
+                    ColorSetting { settingKey: "themeColor_neonFrom"; label: "Neon: start"; description: "Left end of the gradient rim (themes with neon)."; defaultValue: AgentTheme.neon0.toString() }
+                    ColorSetting { settingKey: "themeColor_neonTo"; label: "Neon: end"; description: "Right end of the gradient rim."; defaultValue: AgentTheme.neon3.toString() }
                 }
 
                 ToggleSetting {
@@ -204,27 +204,27 @@ PluginSettings {
 
                     Repeater {
                         model: [
-                            { key: "primary", label: "Primary (accent, user bubble)", def: "#7aa2f7" },
-                            { key: "primaryText", label: "Text on primary", def: "#101014" },
-                            { key: "surface", label: "Tool step background", def: "#16161a" },
-                            { key: "surfaceContainer", label: "Assistant bubble, input card", def: "#1e1e24" },
-                            { key: "surfaceContainerHighest", label: "Menus and dialogs", def: "#2a2a32" },
-                            { key: "surfaceVariant", label: "Hover and secondary fills", def: "#34343d" },
-                            { key: "surfaceText", label: "Text", def: "#e6e6ea" },
-                            { key: "surfaceVariantText", label: "Muted text and icons", def: "#9a9aa5" },
-                            { key: "outlineVariant", label: "Borders", def: "#44444e" },
-                            { key: "error", label: "Danger (recording, delete)", def: "#ef4444" },
-                            { key: "warning", label: "Warning (tool steps)", def: "#ff9800" },
-                            { key: "neon0", label: "Neon 1", def: "#3ee0ff" },
-                            { key: "neon1", label: "Neon 2", def: "#4f7bff" },
-                            { key: "neon2", label: "Neon 3", def: "#9b5cff" },
-                            { key: "neon3", label: "Neon 4", def: "#e14bff" }
+                            { key: "primary", label: "Primary (accent, user bubble)" },
+                            { key: "primaryText", label: "Text on primary" },
+                            { key: "surface", label: "Tool step background" },
+                            { key: "surfaceContainer", label: "Assistant bubble, input card" },
+                            { key: "surfaceContainerHighest", label: "Menus and dialogs" },
+                            { key: "surfaceVariant", label: "Hover and secondary fills" },
+                            { key: "surfaceText", label: "Text" },
+                            { key: "surfaceVariantText", label: "Muted text and icons" },
+                            { key: "outlineVariant", label: "Borders" },
+                            { key: "error", label: "Danger (recording, delete)" },
+                            { key: "warning", label: "Warning (tool steps)" },
+                            { key: "neon0", label: "Neon 1" },
+                            { key: "neon1", label: "Neon 2" },
+                            { key: "neon2", label: "Neon 3" },
+                            { key: "neon3", label: "Neon 4" }
                         ]
                         delegate: ColorSetting {
                             required property var modelData
                             settingKey: "themeAdv_" + modelData.key
                             label: modelData.label
-                            defaultValue: modelData.def
+                            defaultValue: AgentTheme[modelData.key].toString()
                         }
                     }
                 }
@@ -284,7 +284,7 @@ PluginSettings {
                 ToggleSetting {
                     settingKey: "liquidGlass"
                     label: "Liquid Glass"
-                    description: "Translucent glass bubbles with a highlighted edge and the background blurred behind each one. Needs Blur enabled in DMS; without it the bubbles stay solid."
+                    description: "Translucent glass bubbles with a highlighted edge and the background blurred behind each one. Needs Blur enabled in DMS; without it, and in the Light theme, the bubbles stay solid."
                     defaultValue: false
                 }
 

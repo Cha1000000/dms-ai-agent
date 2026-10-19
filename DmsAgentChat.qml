@@ -318,9 +318,9 @@ Item {
 
     // Drawn behind the card instead of through a layer on it: a layer renders the card's text
     // and icons into a texture, which makes them soft. A shadow under a translucent card
-    // would darken what the glass shows, so it is for the solid look only.
+    // would darken what shows through, so it is for the opaque look only.
     RectangularShadow {
-        visible: !chatRoot.glassOn
+        visible: !chatRoot.glassOn && chatRoot.panelAlpha >= 0.99
         x: inputCard.x; y: inputCard.y; width: inputCard.width; height: inputCard.height
         z: inputCard.z - 1
         radius: inputCard.radius

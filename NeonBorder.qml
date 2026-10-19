@@ -49,7 +49,7 @@ Item {
 
     // The ring variant: only built while it is in use, so the default look costs nothing extra.
     Loader {
-        active: neon.ring
+        active: neon.ring && AgentTheme.neonEnabled
         anchors.fill: parent
         sourceComponent: Item {
             // Painted into a texture only; what is shown are the two effects below.

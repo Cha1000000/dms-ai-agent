@@ -46,14 +46,24 @@ Singleton {
 
     readonly property var _preset: presets[preset] || presets.jarvis
 
-    // The key colors stand for several roles each.
+    // The key colors stand for several roles each; the rest of a role group is derived so
+    // that a light or dark choice stays readable.
+    function _lum(c) { var k = Qt.color(c); return 0.2126 * k.r + 0.7152 * k.g + 0.0722 * k.b; }
+
+    // Toward the opposite end of the lightness scale, e.g. a dark panel gets lighter.
+    function _lift(c, t) { return _mix(c, _lum(c) < 0.5 ? "#ffffff" : "#000000", t); }
+
     function _fromCustom(name) {
         var c = custom || ({});
         switch (name) {
         case "primary": return c.accent;
+        case "primaryText": return c.accent ? (_lum(c.accent) > 0.55 ? "#101014" : "#ffffff") : undefined;
         case "surfaceContainer": return c.panel;
-        case "surfaceContainerHighest": return c.panel ? Qt.lighter(c.panel, 1.2) : undefined;
+        case "surfaceContainerHighest": return c.panel ? _lift(c.panel, 0.08) : undefined;
+        case "surfaceVariant": return c.panel ? _lift(c.panel, 0.16) : undefined;
+        case "surface": return c.panel ? _mix(c.panel, _lum(c.panel) < 0.5 ? "#000000" : "#ffffff", 0.3) : undefined;
         case "surfaceText": return c.text;
+        case "surfaceVariantText": return c.text ? _mix(c.text, c.panel || (_preset.surfaceContainer || Theme.surfaceContainer), 0.35) : undefined;
         case "outlineVariant": return c.outline;
         case "neon0": return c.neonFrom;
         case "neon3": return c.neonTo;
