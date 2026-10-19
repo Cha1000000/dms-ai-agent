@@ -114,6 +114,7 @@ PluginComponent {
         AgentService.voiceVenv = pluginData.voiceVenv || "";
         AgentService.voiceDevice = pluginData.voiceDevice || "";
         AgentService.voiceWarmup = pluginData.voiceWarmup === true;
+        AgentService.permissionMode = pluginData.permissionMode === "auto" ? "auto" : "confirm";
         AgentService.autoUpdate = pluginData.autoUpdate === true;
         AgentService.checkForUpdates();
         if (pluginData.hotkey !== undefined) AgentService.applyHotkey(pluginData.hotkey);

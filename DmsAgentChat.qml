@@ -1008,6 +1008,101 @@ Item {
         }
     }
 
+    // --- Approval of a tool call (confirm mode) ---
+    Rectangle {
+        id: permissionDialog
+        visible: AgentService.pendingPermission !== null
+        anchors.fill: parent
+        color: Theme.withAlpha(Theme.shadow || "#000000", 0.55)
+        z: 41
+
+        // Enter allows, Esc denies; focus goes back to the input when the dialog closes.
+        focus: visible
+        onVisibleChanged: { if (visible) forceActiveFocus(); else inputField.forceActiveFocus(); }
+        Keys.onReturnPressed: AgentService.respondPermission(true)
+        Keys.onEnterPressed: AgentService.respondPermission(true)
+        Keys.onEscapePressed: AgentService.respondPermission(false)
+
+        MouseArea { anchors.fill: parent; hoverEnabled: true }
+
+        Rectangle {
+            width: Math.min(parent.width - 48, 380)
+            height: permCol.height + 32
+            anchors.centerIn: parent
+            radius: 16
+            color: Theme.surfaceContainerHighest
+            border.width: 1
+            border.color: Theme.withAlpha(Theme.outlineVariant, 0.5)
+
+            Column {
+                id: permCol
+                anchors.centerIn: parent
+                width: parent.width - 32
+                spacing: 12
+
+                Text {
+                    width: parent.width
+                    text: AgentService.tr("permission.title")
+                    wrapMode: Text.Wrap
+                    color: Theme.surfaceText
+                    font.pixelSize: 13; font.weight: Font.Bold
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: Math.min(permText.implicitHeight + 16, 160)
+                    radius: 8
+                    color: Theme.withAlpha(Theme.surfaceVariant, 0.25)
+                    clip: true
+                    Text {
+                        id: permText
+                        x: 8; y: 8; width: parent.width - 16
+                        text: AgentService.pendingPermission ? AgentService.pendingPermission.text : ""
+                        wrapMode: Text.WrapAnywhere
+                        color: Theme.surfaceText
+                        font.pixelSize: 11; font.family: "monospace"
+                    }
+                }
+
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 8
+
+                    Rectangle {
+                        width: 110; height: 30; radius: 15
+                        color: denyArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.5) : Theme.withAlpha(Theme.surfaceVariant, 0.25)
+                        Text {
+                            anchors.centerIn: parent; text: AgentService.tr("permission.deny")
+                            font.pixelSize: 12; color: Theme.surfaceText
+                        }
+                        MouseArea {
+                            id: denyArea
+                            anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: AgentService.respondPermission(false)
+                        }
+                    }
+
+                    Rectangle {
+                        width: 110; height: 30; radius: 15
+                        color: allowArea.containsMouse ? Theme.primary : Theme.withAlpha(Theme.primary, 0.8)
+                        Text {
+                            anchors.centerIn: parent; text: AgentService.tr("permission.allow")
+                            font.pixelSize: 12; font.weight: Font.Bold; color: Theme.primaryText || "#FFFFFF"
+                        }
+                        MouseArea {
+                            id: allowArea
+                            anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: AgentService.respondPermission(true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 
     // --- Messages container (fills space above input) ---
     Flickable {

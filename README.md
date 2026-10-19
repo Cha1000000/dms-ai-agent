@@ -98,6 +98,7 @@ Then, in DMS:
 | Message Text Size | `13px` | font size in the chat bubbles, 11–22; also `Ctrl` + wheel or `Ctrl` + `+` / `-` in the chat, `Ctrl+0` resets |
 | Chat Height | `75%` | how much of the monitor's height the chat window takes, 40–95 |
 | Liquid Glass | off | translucent bubbles with a highlighted edge and the background blurred behind each one; replaces Background Transparency while on; needs Blur enabled in DMS (otherwise the bubbles stay solid). Lniri draws a glass lens per bubble with a `dms:agent` layer-rule |
+| Permissions | Ask first | *Ask first*: Allow / Deny dialog before each command or file change; *No confirmation*: runs everything immediately (`--dangerously-skip-permissions`) |
 | Auto-update | off | update from this repository once per boot and restart the shell to apply it |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
 | Microphone | System default | dropdown of the capture devices PipeWire knows, under the names the audio settings show |
@@ -235,8 +236,12 @@ the chat panel stays in memory with the QML it was built from.
 
 ## Good to know
 
-- The agent runs Claude Code with `--dangerously-skip-permissions`: it executes commands **without
-  asking**. That is what makes "open X, move it to workspace 2" instant — keep it in mind.
+- **Permissions.** By default the agent asks first: before it runs a command or changes a file the
+  chat shows an **Allow / Deny** dialog (`Enter` allows, `Esc` denies) and the agent waits. In the
+  settings you can switch **Permissions** to *No confirmation*; then Claude Code runs with
+  `--dangerously-skip-permissions` and the agent executes commands **without asking**, with
+  unrestricted shell access as your user. That makes "open X, move it to workspace 2" instant —
+  keep it in mind. Prompts, window lists and attachments go to Anthropic in either mode.
 - **Billing follows your Claude Code login, not this plugin.** It shells out to the `claude` you
   already have, so whatever that is authenticated with — a subscription, or an API key if you set
   one up — is what answers. There is no key to enter here and no separate account. The cost shown

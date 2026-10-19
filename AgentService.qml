@@ -77,6 +77,10 @@ Singleton {
         return (m && m.efforts) ? m.efforts : [];
     }
     readonly property string activeEffort: effortLevels.indexOf(effort) >= 0 ? effort : ""
+    // "confirm": the agent asks before every action that needs a permission, and the chat
+    // shows an Allow / Deny dialog. "auto": no questions asked (--dangerously-skip-permissions).
+    property string permissionMode: "confirm"
+    readonly property string _noConfirmSentence: "Execute actions immediately, never ask for confirmation. "
     property string systemPrompt: "You are a concise desktop assistant on Linux with niri (Wayland compositor) and DankMaterialShell. " +
         "You have full tool access (Bash, Read, Write, Edit). Execute actions immediately, never ask for confirmation. " +
         "Respond in user's language. Be concise.\n\n" +
@@ -779,13 +783,30 @@ Singleton {
     property bool _gotResult: false
     property string _lastText: ""
     property var _toolNames: ({})
+    // The tool call the agent is waiting on in confirm mode: { requestId, text }.
+    property var pendingPermission: null
+
+    function respondPermission(allow) {
+        var p = pendingPermission, proc = _claudeProcess;
+        if (!p || !proc) { pendingPermission = null; return; }
+        pendingPermission = null;
+        statusText = tr(activeEffort !== "" ? "status.thinking" : "status.processing");
+        var response = allow ? { behavior: "allow", updatedInput: p.input }
+                             : { behavior: "deny", message: "The user denied this action." };
+        proc.write(JSON.stringify({ type: "control_response", response: {
+            subtype: "success", request_id: p.requestId, response: response } }) + "\n");
+    }
 
     Component {
         id: claudeRunner
         Process {
             id: claudeProc
             property string shellCmd: ""
+            // Confirm mode talks to the agent over stdin (the answers to its permission requests).
+            property string input: ""
+            stdinEnabled: input !== ""
             command: ["bash", "-lc", shellCmd]
+            onStarted: if (input !== "") write(input)
             stdout: SplitParser {
                 onRead: data => {
                     if (root._claudeProcess === claudeProc) root.handleStreamLine(data);
@@ -807,12 +828,14 @@ Singleton {
         onTriggered: {
             if (root._claudeProcess && !root._gotResult) {
                 root._claudeProcess = null;
+                root.pendingPermission = null;
                 root.finishResponse(root._lastText || "(error: agent exited without a response)");
             }
         }
     }
 
     function cancelRequest() {
+        pendingPermission = null;
         if (_claudeProcess) {
             _claudeProcess.signal(15);
             _claudeProcess = null;
@@ -828,16 +851,22 @@ Singleton {
         _toolNames = ({});
 
         // exec: bash is replaced by claude, so Cancel's SIGTERM reaches claude itself.
+        var confirm = permissionMode !== "auto";
+        var prompt_ = confirm ? systemPrompt.replace(_noConfirmSentence, "") : systemPrompt;
         var cmd = cdWorkDir + "exec claude -p"
             + " --model " + shellQuote(claudeModel)
             + (activeEffort !== "" ? " --effort " + shellQuote(activeEffort) : "")
+            + (confirm ? " --input-format stream-json --permission-mode default --permission-prompt-tool stdio"
+                       : "")
             + " --output-format stream-json --verbose"
-            + " --dangerously-skip-permissions"
-            + " --append-system-prompt " + shellQuote(systemPrompt)
+            + (confirm ? "" : " --dangerously-skip-permissions")
+            + " --append-system-prompt " + shellQuote(prompt_)
             + (sessionId ? " --resume " + shellQuote(sessionId) : "")
-            + " 2>/dev/null <<< " + shellQuote(prompt);
+            + (confirm ? " 2>/dev/null" : " 2>/dev/null <<< " + shellQuote(prompt));
 
-        var p = claudeRunner.createObject(root, { shellCmd: cmd });
+        var props = { shellCmd: cmd };
+        if (confirm) props.input = JSON.stringify({ type: "user", message: { role: "user", content: prompt } }) + "\n";
+        var p = claudeRunner.createObject(root, props);
         _claudeProcess = p;
         p.running = true;
     }
@@ -848,7 +877,15 @@ Singleton {
 
         var content = ev.message && Array.isArray(ev.message.content) ? ev.message.content : [];
 
-        if (ev.type === "assistant") {
+        if (ev.type === "control_request") {
+            var req = ev.request || {};
+            if (req.subtype === "can_use_tool") {
+                var text = describeTool(req.tool_name, req.input);
+                pendingPermission = { requestId: ev.request_id, input: req.input || {}, text: text };
+                statusText = tr("status.awaiting");
+                notifyIfHidden(tr("permission.notify") + ": " + text);
+            }
+        } else if (ev.type === "assistant") {
             for (var i = 0; i < content.length; i++) {
                 var block = content[i];
                 if (block.type === "thinking") {
@@ -876,7 +913,10 @@ Singleton {
             }
         } else if (ev.type === "result") {
             _gotResult = true;
+            // Closing stdin lets a confirm-mode agent (which waits for further messages) exit.
+            if (_claudeProcess) _claudeProcess.stdinEnabled = false;
             _claudeProcess = null;
+            pendingPermission = null;
             handleResult(ev);
         }
     }

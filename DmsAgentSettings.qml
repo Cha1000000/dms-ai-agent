@@ -87,6 +87,17 @@ PluginSettings {
                     defaultValue: ""
                 }
 
+                SelectionSetting {
+                    settingKey: "permissionMode"
+                    label: "Permissions"
+                    description: "Ask first: the chat shows an Allow / Deny dialog before the agent runs a command or changes a file. No confirmation: the agent acts immediately (Claude Code runs with --dangerously-skip-permissions, unrestricted shell access as you)."
+                    defaultValue: "confirm"
+                    options: [
+                        { label: "Ask first", value: "confirm" },
+                        { label: "No confirmation", value: "auto" }
+                    ]
+                }
+
                 StringSetting {
                     settingKey: "maxTokens"
                     label: "Max Tokens"
