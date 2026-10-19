@@ -538,8 +538,8 @@ Item {
                         color: AgentService.activeEffort !== "" ? Theme.withAlpha(AgentTheme.primary, 0.15) : (effortArea.containsMouse || effortDropdown.visible ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.3) : "transparent")
                         Row {
                             id: effortRow; anchors.centerIn: parent; spacing: 4
-                            DankIcon { name: "neurology"; color: AgentService.activeEffort !== "" ? AgentTheme.primary : AgentTheme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
-                            StyledText { text: AgentService.tr("effort." + (AgentService.activeEffort || "auto")); font.pixelSize: Theme.fontSizeSmall; color: AgentService.activeEffort !== "" ? AgentTheme.primary : AgentTheme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            DankIcon { name: "neurology"; color: AgentService.activeEffort !== "" ? AgentTheme.accentOnTint : AgentTheme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
+                            StyledText { text: AgentService.tr("effort." + (AgentService.activeEffort || "auto")); font.pixelSize: Theme.fontSizeSmall; color: AgentService.activeEffort !== "" ? AgentTheme.accentOnTint : AgentTheme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
                         }
                         MouseArea {
                             id: effortArea; anchors.fill: parent; hoverEnabled: true
