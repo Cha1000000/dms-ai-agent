@@ -1,1 +1,2 @@
 singleton AgentService 1.0 AgentService.qml
+singleton AgentTheme 1.0 AgentTheme.qml

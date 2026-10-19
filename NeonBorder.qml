@@ -17,7 +17,7 @@ Item {
     property real glowOpacity: 0.6
     property bool ring: false
 
-    visible: target ? target.visible : false
+    visible: target ? target.visible && AgentTheme.neonEnabled : false
     z: target ? target.z - 1 : 0
     anchors.fill: target
     anchors.margins: -thickness
@@ -29,10 +29,10 @@ Item {
         radius: neon.radius + neon.thickness
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: "#3EE0FF" }
-            GradientStop { position: 0.35; color: "#4F7BFF" }
-            GradientStop { position: 0.7; color: "#9B5CFF" }
-            GradientStop { position: 1.0; color: "#E14BFF" }
+            GradientStop { position: 0.0; color: AgentTheme.neon0 }
+            GradientStop { position: 0.35; color: AgentTheme.neon1 }
+            GradientStop { position: 0.7; color: AgentTheme.neon2 }
+            GradientStop { position: 1.0; color: AgentTheme.neon3 }
         }
     }
 
@@ -65,16 +65,23 @@ Item {
                     function onRadiusChanged() { ringCanvas.requestPaint(); }
                     function onThicknessChanged() { ringCanvas.requestPaint(); }
                 }
+                Connections {
+                    target: AgentTheme
+                    function onNeon0Changed() { ringCanvas.requestPaint(); }
+                    function onNeon1Changed() { ringCanvas.requestPaint(); }
+                    function onNeon2Changed() { ringCanvas.requestPaint(); }
+                    function onNeon3Changed() { ringCanvas.requestPaint(); }
+                }
 
                 onPaint: {
                     var c = getContext("2d");
                     c.reset();
                     var t = neon.thickness, r = neon.radius + t / 2;
                     var g = c.createLinearGradient(0, 0, width, 0);
-                    g.addColorStop(0.0, "#3EE0FF");
-                    g.addColorStop(0.35, "#4F7BFF");
-                    g.addColorStop(0.7, "#9B5CFF");
-                    g.addColorStop(1.0, "#E14BFF");
+                    g.addColorStop(0.0, AgentTheme.neon0);
+                    g.addColorStop(0.35, AgentTheme.neon1);
+                    g.addColorStop(0.7, AgentTheme.neon2);
+                    g.addColorStop(1.0, AgentTheme.neon3);
                     c.strokeStyle = g;
                     c.lineWidth = t;
                     c.beginPath();

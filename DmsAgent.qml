@@ -115,6 +115,7 @@ PluginComponent {
         AgentService.voiceDevice = pluginData.voiceDevice || "";
         AgentService.voiceWarmup = pluginData.voiceWarmup === true;
         AgentService.permissionMode = pluginData.permissionMode === "auto" ? "auto" : "confirm";
+        AgentTheme.apply(pluginData);
         AgentService.autoUpdate = pluginData.autoUpdate === true;
         AgentService.checkForUpdates();
         if (pluginData.hotkey !== undefined) AgentService.applyHotkey(pluginData.hotkey);
@@ -301,7 +302,7 @@ PluginComponent {
             spacing: Theme.spacingXS
             DankIcon {
                 visible: AgentService.busy
-                name: "hourglass_top"; color: "#FF9800"
+                name: "hourglass_top"; color: AgentTheme.warning
                 size: root.iconSize; anchors.verticalCenter: parent.verticalCenter
             }
             Image {
@@ -324,7 +325,7 @@ PluginComponent {
             spacing: 2
             DankIcon {
                 visible: AgentService.busy
-                name: "hourglass_top"; color: "#FF9800"
+                name: "hourglass_top"; color: AgentTheme.warning
                 size: root.iconSize; anchors.horizontalCenter: parent.horizontalCenter
             }
             Image {
