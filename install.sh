@@ -5,7 +5,7 @@
 #   ./install.sh [options]
 #
 # Options:
-#   --hotkey KEY        niri hotkey for the chat (default: Mod+Space; "none" to skip)
+#   --hotkey KEY        niri hotkey for the chat, e.g. Mod+Space (default: none)
 #   --no-voice          skip voice input setup (Python venv + Whisper model)
 #   --voice-venv PATH   reuse an existing venv with faster-whisper instead of creating one
 #   --no-model          do not pre-download the Whisper model (it downloads on first use)
@@ -21,7 +21,7 @@ VENV="${XDG_DATA_HOME:-$HOME/.local/share}/dms-ai-agent/whisper-venv"
 NIRI_CONFIG="$CONFIG_HOME/niri/config.kdl"
 INCLUDE_LINE='include optional=true "dms-ai-agent.kdl"'
 
-HOTKEY="Mod+Space"
+HOTKEY="none"
 WITH_VOICE=1
 WITH_MODEL=1
 REUSE_VENV=""

@@ -68,13 +68,13 @@ cd dms-ai-agent && ./install.sh
 
 The installer puts the plugin into `~/.config/DankMaterialShell/plugins/dmsAgent` (an existing copy
 of the original plugin is moved aside, not deleted), creates a Python venv for voice input with the
-CUDA libraries when an NVIDIA GPU is present, downloads the Whisper model, sets the hotkey and
-restarts DMS. It tells you exactly which package to install if something is missing, and is safe to
+CUDA libraries when an NVIDIA GPU is present, downloads the Whisper model and
+restarts DMS (a hotkey is set only if you pass `--hotkey`). It tells you exactly which package to install if something is missing, and is safe to
 run again to update.
 
 | Option | Meaning |
 |---|---|
-| `--hotkey KEY` | chat hotkey, default `Mod+Space`; `none` to skip |
+| `--hotkey KEY` | niri hotkey for the chat, e.g. `Mod+Space`; none by default |
 | `--no-voice` | skip the voice input setup |
 | `--voice-venv PATH` | reuse an existing venv that already has `faster-whisper` |
 | `--no-model` | don't pre-download the Whisper model (it downloads on first use) |
@@ -94,7 +94,7 @@ Then, in DMS:
 | Effort | auto | `low`, `medium`, `high`, `xhigh`, `max` (`--effort`); also switchable in the chat toolbar, levels depend on the model |
 | System Prompt | built-in | your own instructions for the agent |
 | Pill Label | `Jarvis` | text next to the icon in the bar |
-| Chat Hotkey (niri) | `Mod+Space` | any niri key combo; empty removes it |
+| Chat Hotkey (niri) | none | any niri key combo, e.g. `Mod+Space`; overrides an existing bind on that key; empty removes it |
 | Message Text Size | `13px` | font size in the chat bubbles, 11–22; also `Ctrl` + wheel or `Ctrl` + `+` / `-` in the chat, `Ctrl+0` resets |
 | Chat Height | `75%` | how much of the monitor's height the chat window takes, 40–95 |
 | Liquid Glass | off | translucent bubbles with a highlighted edge and the background blurred behind each one; replaces Background Transparency while on; needs Blur enabled in DMS (otherwise the bubbles stay solid). Lniri draws a glass lens per bubble with a `dms:agent` layer-rule |
@@ -108,8 +108,10 @@ Then, in DMS:
 
 ### Hotkey
 
-niri binds live in the compositor config, so the plugin keeps its one binding in
-`~/.config/niri/dms-ai-agent.kdl`, included at the very end of `config.kdl`:
+No hotkey is set by default. When you enter one in the settings (or pass `--hotkey` to the
+installer), the plugin writes it to `~/.config/niri/dms-ai-agent.kdl` and the installer adds an
+include at the very end of `config.kdl`. To remove everything, clear the setting and delete that
+line and file:
 
 ```kdl
 include optional=true "dms-ai-agent.kdl"

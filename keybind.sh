@@ -25,6 +25,8 @@ if ! command -v niri >/dev/null 2>&1; then
 fi
 
 KEY="$(printf '%s' "$KEY" | tr -d '[:space:]')"
+# Nothing to remove and no file yet: leave the niri config directory alone.
+if [ -z "$KEY" ] && [ ! -f "$TARGET" ]; then echo "hotkey: none"; exit 0; fi
 case "$KEY" in
     *'"'* | *'{'* | *'}'* | *';'*) echo "invalid key: $KEY" >&2; exit 1 ;;
 esac

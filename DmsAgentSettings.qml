@@ -199,9 +199,9 @@ PluginSettings {
                 StringSetting {
                     settingKey: "hotkey"
                     label: "Chat Hotkey (niri)"
-                    description: "Toggles the chat on the focused monitor, e.g. Mod+Space or Mod+Shift+A. Empty removes it. Written to ~/.config/niri/dms-ai-agent.kdl"
-                    placeholder: "Mod+Space"
-                    defaultValue: "Mod+Space"
+                    description: "Toggles the chat on the focused monitor, e.g. Mod+Space or Mod+Shift+A. No hotkey by default; empty removes it. A set hotkey overrides an existing bind on the same key. Written to ~/.config/niri/dms-ai-agent.kdl"
+                    placeholder: "none; e.g. Mod+Space"
+                    defaultValue: ""
                 }
             }
         }
