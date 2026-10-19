@@ -17,7 +17,7 @@ Singleton {
     property var advanced: ({})
 
     readonly property var presets: ({
-        jarvis: { neon: true },
+        jarvis: { neon: true, primary: "#4F7BFF", primaryText: "#ffffff" },
         dms: { neon: false },
         umbrella: {
             neon: true,

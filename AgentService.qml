@@ -628,8 +628,9 @@ Singleton {
         var dir = normalizeDir(path);
         if (dir === defaultWorkDir) dir = "";
         if (dir === customWorkDir) return;
-        customWorkDir = dir;
+        // Empty the conversation first: the chat reloads its feed on the directory change.
         clearMessages();
+        customWorkDir = dir;
         loadHistory();
     }
 
