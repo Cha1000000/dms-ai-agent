@@ -25,6 +25,7 @@ Singleton {
             surface: "#140607", surfaceContainer: "#1c0a0c", surfaceContainerHighest: "#2a1013",
             surfaceVariant: "#2e1215", surfaceText: "#f2e6e6", surfaceVariantText: "#b59a9c",
             outlineVariant: "#5a2a2e", danger: "#e0182d",
+            bubbleFrom: "#b8101a", bubbleTo: "#8a0a12",
             neon0: "#ff2a2a", neon1: "#e0102a", neon2: "#ff2a55", neon3: "#b5083a"
         },
         dark: {
@@ -107,8 +108,8 @@ Singleton {
     readonly property bool glassAllowed: _preset.glass !== false
     // Your own message bubbles: a gradient between two of the neon colors in themes with neon
     // (matching the window rim), the accent otherwise.
-    readonly property color bubbleFrom: neonEnabled ? neon1 : primary
-    readonly property color bubbleTo: neonEnabled ? neon2 : primary
+    readonly property color bubbleFrom: pick("bubbleFrom", neonEnabled ? neon1 : primary)
+    readonly property color bubbleTo: pick("bubbleTo", neonEnabled ? neon2 : primary)
     readonly property color neon0: pick("neon0", "#3EE0FF")
     readonly property color neon1: pick("neon1", "#4F7BFF")
     readonly property color neon2: pick("neon2", "#9B5CFF")
