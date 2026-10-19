@@ -49,9 +49,13 @@ original has not changed since April 2026, and nothing is merged from it automat
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI, logged in (`claude` in `PATH`).
   **Your existing Claude Code login is what pays for this** — a Claude subscription if that is
   how you signed in. The plugin never asks for an API key and never calls the API itself.
-- `git`, `python3`
+- `python3`, `bash`; `git` for installing and the optional auto-update (DMS itself installs plugins
+  with it)
 - Voice input: PipeWire (`pw-record`) and ~0.5–2 GB of disk for the Whisper model;
   an NVIDIA GPU makes it near-instant but is not required
+- The "attach a screenshot of the active window" button needs niri (it is the only compositor
+  here that can capture a single window); the picture is read through DMS's own clipboard, so
+  `wl-clipboard` is not needed
 
 ## Install
 

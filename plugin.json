@@ -12,6 +12,6 @@
     "component": "./DmsAgent.qml",
     "settings": "./DmsAgentSettings.qml",
     "requires_dms": ">=1.4.0",
-    "requires": ["bash", "git", "claude", "python3"],
+    "requires": ["bash", "claude", "python3", "pipewire"],
     "permissions": ["settings_read", "settings_write"]
 }

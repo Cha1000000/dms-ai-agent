@@ -6,7 +6,8 @@
 # and grabbing the output instead would catch the chat itself, which floats
 # above as a layer. niri always puts the shot on the clipboard and only
 # optionally writes it to disk under whatever `screenshot-path` says — so the
-# picture is taken from the clipboard, which needs no knowledge of that setting.
+# picture is taken from the clipboard (DMS reads it, no wl-clipboard needed), which needs no
+# knowledge of that setting.
 set -uo pipefail
 
 out="${1:-}"
@@ -40,7 +41,8 @@ niri msg action screenshot-window --id "$id" -d false >/dev/null 2>&1 || {
 # The clipboard is served by niri asynchronously; a moment is needed before it
 # answers with the image.
 sleep 0.4
-wl-paste --type image/png > "$out" 2>/dev/null
+dms clipboard paste > "$out" 2>/dev/null
 
-[ -s "$out" ] || { rm -f "$out"; echo "empty"; exit 1; }
+# The clipboard may hold something else if niri was slow: only a PNG will do.
+if [ "$(head -c 4 "$out" 2>/dev/null | tail -c 3)" != "PNG" ]; then rm -f "$out"; echo "empty"; exit 1; fi
 echo "ok"
