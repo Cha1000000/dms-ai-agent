@@ -461,40 +461,27 @@ Singleton {
         runQuietExit("python3 " + shellQuote(openScript) + " " + shellQuote(path), function() {});
     }
 
-    // --- Self-update ---
-    // Checked once per boot: the marker lives in the runtime dir, which is wiped
-    // on reboot but survives a shell restart — otherwise updating would restart
-    // the shell, which would check again, which would...
-    property bool autoUpdate: false
+    // --- Update notice ---
+    // Only tells that a newer version exists; installing it is up to DMS
+    // (Settings → Plugins → Update). Checked once per boot: the marker lives in
+    // the runtime dir, which is wiped on reboot but survives a shell restart.
+    property bool updateNotify: false
 
-    readonly property string updateScript: decodeURIComponent(String(Qt.resolvedUrl("update.sh")).replace(/^file:\/\//, ""))
+    readonly property string updateScript: decodeURIComponent(String(Qt.resolvedUrl("check-update.sh")).replace(/^file:\/\//, ""))
     readonly property string updateMarker: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/dms-agent-update-checked"
 
     function checkForUpdates() {
-        if (!autoUpdate) return;
+        if (!updateNotify) return;
 
         // The marker is created before the work, so a failure does not retry on
         // every shell restart for the rest of the session.
         runQuietExit("test -e " + shellQuote(updateMarker) + " && echo skip || touch " + shellQuote(updateMarker), function(output) {
             if (String(output).trim() === "skip") return;
-            _runUpdate();
-        });
-    }
-
-    function _runUpdate() {
-        run(shellQuote(updateScript), function(output) {
-            var result = String(output).trim();
-            // Nothing to say when there was nothing to do, when the network is
-            // down, or when someone is working in the plugin directory.
-            if (result !== "updated") return;
-
-            runQuietExit("dms notify --app " + shellQuote(pillLabel) + " "
-                + shellQuote(tr("update.done")) + " " + shellQuote(tr("update.restarting")), function() {});
-
-            // This command kills the shell that runs it, so it has to be
-            // detached and given a moment, or it dies before it acts.
-            runQuietExit("systemctl --user is-active --quiet dms.service && "
-                + "setsid sh -c 'sleep 2; systemctl --user restart dms.service' >/dev/null 2>&1 &", function() {});
+            run(shellQuote(updateScript), function(result) {
+                if (String(result).trim() !== "available") return;
+                runQuietExit("dms notify --app " + shellQuote(pillLabel) + " "
+                    + shellQuote(tr("update.available")) + " " + shellQuote(tr("update.how")), function() {});
+            });
         });
     }
 

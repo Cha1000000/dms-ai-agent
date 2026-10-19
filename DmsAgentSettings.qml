@@ -294,9 +294,9 @@ PluginSettings {
                 }
 
                 ToggleSetting {
-                    settingKey: "autoUpdate"
-                    label: "Auto-update"
-                    description: "Pull new versions from the plugin's repository once per boot and restart the shell to apply them. Local edits are never touched."
+                    settingKey: "updateNotify"
+                    label: "Update notice"
+                    description: "Once per boot, check the plugin's repository and show a notification when a newer version exists. Nothing is installed; update in Settings → Plugins."
                     defaultValue: false
                 }
 

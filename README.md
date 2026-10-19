@@ -35,7 +35,7 @@ original has not changed since April 2026, and nothing is merged from it automat
 | Chat position | always bottom-centre | left edge, centre or right edge, remembered per monitor |
 | Look | grey border | neon gradient rim, custom icon and label |
 | Sessions | mixed with your other Claude Code sessions in `$HOME` | kept in their own project dir |
-| Staying current | press Update when you remember to | updates itself once per boot, local edits untouched |
+| Staying current | press Update when you remember to | optional notification when a newer version exists |
 
 <p align="center">
   <img src="assets/screenshot-progress.png" alt="Agent running a tool" width="49%">
@@ -49,7 +49,7 @@ original has not changed since April 2026, and nothing is merged from it automat
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI, logged in (`claude` in `PATH`).
   **Your existing Claude Code login is what pays for this** — a Claude subscription if that is
   how you signed in. The plugin never asks for an API key and never calls the API itself.
-- `python3`, `bash`; `git` for installing and the optional auto-update (DMS itself installs plugins
+- `python3`, `bash`; `git` for installing and the optional update notice (DMS itself installs plugins
   with it)
 - Voice input: PipeWire (`pw-record`) and ~0.5–2 GB of disk for the Whisper model;
   an NVIDIA GPU makes it near-instant but is not required
@@ -107,7 +107,7 @@ Then, in DMS:
 | Custom colors | off | overrides the key colors of the chosen theme: accent, panel and bubbles, text, borders, and the two ends of the neon gradient |
 | Advanced: edit every color | off | one color per role of the theme; wins over the key colors. Turn a switch off to go back to the theme |
 | Permissions | Ask first | *Ask first*: Allow / Deny dialog before each command or file change; *No confirmation*: runs everything immediately (`--dangerously-skip-permissions`) |
-| Auto-update | off | update from this repository once per boot and restart the shell to apply it |
+| Update notice | off | once per boot, check this repository and notify when a newer version exists; installs nothing |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
 | Microphone | System default | dropdown of the capture devices PipeWire knows, under the names the audio settings show |
 | Language | `auto` | speech recognition **and** interface language; a fixed code is also more accurate for short phrases |
@@ -226,19 +226,10 @@ monitor). The chat window needs keyboard focus for Ctrl to register, which it no
 Use **Update** in DMS (Settings → Plugins) or re-run `install.sh`. DMS updates plugins with
 `git pull`, and this repository only ever moves forward, so updates are plain fast-forwards.
 
-**Auto-update** is off by default. When you turn it on in the plugin settings, once per
-boot the plugin fast-forwards itself to whatever is in this repository and restarts the
-shell to apply it, with a notification so nothing looks frozen. It never touches a working copy with local edits or local
-commits — those are left exactly as they are and the update is skipped. Leave it
-off to update by hand through DMS; be aware that turning it on means code from this
-repository is applied without asking.
-
-The very first update after installing a version older than this one still has to be
-done by hand — a plugin cannot update itself with code it does not yet have. Everything
-after that is automatic.
-
-While you are editing the plugin in place, the update is skipped rather than fought
-over: commit and push, and it resumes.
+**Update notice** is off by default. When you turn it on in the plugin settings, once per
+boot the plugin runs `git fetch` in its own directory and, if this repository has newer
+commits, shows a notification. It changes nothing: no merge, no restart. Updating stays
+with DMS (Settings → Plugins → Update).
 
 If the chat still behaves like the old version afterwards, restart the shell —
 `systemctl --user restart dms.service`. Reloading the plugin alone refreshes the bar widget while

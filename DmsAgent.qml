@@ -117,7 +117,7 @@ PluginComponent {
         AgentService.voiceWarmup = pluginData.voiceWarmup === true;
         AgentService.permissionMode = pluginData.permissionMode === "auto" ? "auto" : "confirm";
         AgentTheme.apply(pluginData);
-        AgentService.autoUpdate = pluginData.autoUpdate === true;
+        AgentService.updateNotify = pluginData.updateNotify === true;
         AgentService.checkForUpdates();
         if (pluginData.hotkey !== undefined) AgentService.applyHotkey(pluginData.hotkey);
     }
