@@ -76,9 +76,9 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
             }
 
-            Text {
+            StyledText {
                 text: chip.copied ? AgentService.tr("bubble.copied") : chip.label
-                font.pixelSize: 9
+                font.pixelSize: Theme.fontSizeSmall
                 color: chip.copied ? chip.copiedColor : chip.fg
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -396,11 +396,11 @@ Item {
                                 name: "description"; size: 20; color: AgentTheme.surfaceVariantText
                             }
 
-                            Text {
+                            StyledText {
                                 id: nameText
                                 width: parent.width
                                 text: fileName
-                                font.pixelSize: 9
+                                font.pixelSize: Theme.fontSizeSmall
                                 color: AgentTheme.surfaceText
                                 elide: Text.ElideMiddle
                                 horizontalAlignment: Text.AlignHCenter
@@ -474,13 +474,13 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: 46; anchors.rightMargin: 18
                     anchors.topMargin: 12; anchors.bottomMargin: 12
-                    color: AgentTheme.surfaceText; font.pixelSize: 14
+                    color: AgentTheme.surfaceText; font.pixelSize: Theme.fontSizeMedium
                     wrapMode: TextEdit.Wrap; clip: true
 
-                    Text {
+                    StyledText {
                         visible: !inputField.text && !inputField.activeFocus
                         text: AgentService.tr("input.placeholder")
-                        color: AgentTheme.surfaceVariantText; font.pixelSize: 14
+                        color: AgentTheme.surfaceVariantText; font.pixelSize: Theme.fontSizeMedium
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
@@ -517,7 +517,7 @@ Item {
 
                         Row {
                             id: modelRow; anchors.centerIn: parent; spacing: 4
-                            Text { text: AgentService.modelLabel(AgentService.claudeModel); font.pixelSize: 11; color: AgentTheme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            StyledText { text: AgentService.modelLabel(AgentService.claudeModel); font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
                             DankIcon { name: modelDropdown.visible ? "expand_less" : "expand_more"; color: AgentTheme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
                         }
 
@@ -534,7 +534,7 @@ Item {
                         Row {
                             id: effortRow; anchors.centerIn: parent; spacing: 4
                             DankIcon { name: "neurology"; color: AgentService.activeEffort !== "" ? AgentTheme.primary : AgentTheme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
-                            Text { text: AgentService.tr("effort." + (AgentService.activeEffort || "auto")); font.pixelSize: 11; color: AgentService.activeEffort !== "" ? AgentTheme.primary : AgentTheme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            StyledText { text: AgentService.tr("effort." + (AgentService.activeEffort || "auto")); font.pixelSize: Theme.fontSizeSmall; color: AgentService.activeEffort !== "" ? AgentTheme.primary : AgentTheme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
                         }
                         MouseArea {
                             id: effortArea; anchors.fill: parent; hoverEnabled: true
@@ -572,9 +572,9 @@ Item {
                     Item { Layout.fillWidth: true }
 
                     // Cost
-                    Text {
+                    StyledText {
                         visible: AgentService.lastCost !== ""; text: AgentService.lastCost
-                        font.pixelSize: 9; color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5)
+                        font.pixelSize: Theme.fontSizeSmall; color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5)
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
@@ -594,9 +594,9 @@ Item {
                             }
                         }
 
-                        Text {
+                        StyledText {
                             text: AgentService.statusText
-                            color: AgentTheme.surfaceVariantText; font.pixelSize: 11
+                            color: AgentTheme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
@@ -611,18 +611,18 @@ Item {
                     }
 
                     // Voice input: error, recording timer, mic button
-                    Text {
+                    StyledText {
                         visible: (AgentService.voiceError !== "" || AgentService.attachError !== "") && !AgentService.busy
                         text: AgentService.voiceError || AgentService.attachError
-                        color: AgentTheme.error; font.pixelSize: 10
+                        color: AgentTheme.error; font.pixelSize: Theme.fontSizeSmall
                         elide: Text.ElideRight; Layout.maximumWidth: 240
                         Layout.alignment: Qt.AlignVCenter
                     }
 
-                    Text {
+                    StyledText {
                         visible: AgentService.voiceState === "recording"
                         text: Math.floor(AgentService.voiceSeconds / 60) + ":" + ("0" + AgentService.voiceSeconds % 60).slice(-2)
-                        color: AgentTheme.error; font.pixelSize: 11; font.family: "monospace"
+                        color: AgentTheme.error; font.pixelSize: Theme.fontSizeSmall; isMonospace: true
                         Layout.alignment: Qt.AlignVCenter
                     }
 
@@ -702,11 +702,11 @@ Item {
         x: Math.max(4, Math.min(chatRoot.width - width - 4, chatRoot.tipCenterX - width / 2))
         y: chatRoot.tipTopY - height - 6
 
-        Text {
+        StyledText {
             id: tipLabel
             anchors.centerIn: parent
             text: chatRoot.tipText
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontSizeSmall
             color: AgentTheme.surfaceText
         }
     }
@@ -736,8 +736,8 @@ Item {
                     color: optArea.containsMouse ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.3) : "transparent"
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 6
-                        Text { text: modelData.label; font.pixelSize: 12; font.weight: AgentService.isCurrentModel(modelData) ? Font.Bold : Font.Normal; color: AgentService.isCurrentModel(modelData) ? AgentTheme.surfaceText : AgentTheme.surfaceVariantText }
-                        Text { text: AgentService.modelDesc(modelData); font.pixelSize: 10; color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5) }
+                        StyledText { text: modelData.label; font.pixelSize: Theme.fontSizeSmall; font.weight: AgentService.isCurrentModel(modelData) ? Font.Bold : Font.Normal; color: AgentService.isCurrentModel(modelData) ? AgentTheme.surfaceText : AgentTheme.surfaceVariantText }
+                        StyledText { text: AgentService.modelDesc(modelData); font.pixelSize: Theme.fontSizeSmall; color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5) }
                         Item { Layout.fillWidth: true }
                         DankIcon { visible: AgentService.isCurrentModel(modelData); name: "check"; color: AgentTheme.primary; size: 14 }
                     }
@@ -767,7 +767,7 @@ Item {
                     color: effArea.containsMouse ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.3) : "transparent"
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 6
-                        Text { text: AgentService.tr("effort." + (modelData || "auto")); font.pixelSize: 12; font.weight: AgentService.activeEffort === modelData ? Font.Bold : Font.Normal; color: AgentService.activeEffort === modelData ? AgentTheme.surfaceText : AgentTheme.surfaceVariantText }
+                        StyledText { text: AgentService.tr("effort." + (modelData || "auto")); font.pixelSize: Theme.fontSizeSmall; font.weight: AgentService.activeEffort === modelData ? Font.Bold : Font.Normal; color: AgentService.activeEffort === modelData ? AgentTheme.surfaceText : AgentTheme.surfaceVariantText }
                         Item { Layout.fillWidth: true }
                         DankIcon { visible: AgentService.activeEffort === modelData; name: "check"; color: AgentTheme.primary; size: 14 }
                     }
@@ -787,9 +787,9 @@ Item {
         color: AgentTheme.surfaceContainerHighest
         z: 20
 
-        Text {
+        StyledText {
             visible: AgentService.history.length === 0
-            text: AgentService.tr("history.empty"); color: AgentTheme.surfaceVariantText; font.pixelSize: 12
+            text: AgentService.tr("history.empty"); color: AgentTheme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall
             anchors.centerIn: parent
         }
 
@@ -815,8 +815,8 @@ Item {
                     color: clearAllArea.containsMouse ? (AgentTheme.danger) : AgentTheme.surfaceVariantText
                     anchors.verticalCenter: parent.verticalCenter
                 }
-                Text {
-                    text: AgentService.tr("history.clearAll"); font.pixelSize: 10
+                StyledText {
+                    text: AgentService.tr("history.clearAll"); font.pixelSize: Theme.fontSizeSmall
                     color: clearAllArea.containsMouse ? (AgentTheme.danger) : AgentTheme.surfaceVariantText
                     anchors.verticalCenter: parent.verticalCenter
                 }
@@ -848,21 +848,21 @@ Item {
                 color: hArea.containsMouse || editing ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.3) : "transparent"
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 8; spacing: 8
-                    Text { visible: !historyRow.editing; text: modelData.title || "Chat"; font.pixelSize: 12; color: AgentTheme.surfaceText; elide: Text.ElideRight; Layout.fillWidth: true }
+                    StyledText { visible: !historyRow.editing; text: modelData.title || "Chat"; font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceText; elide: Text.ElideRight; Layout.fillWidth: true }
                     TextInput {
                         id: renameInput
                         visible: historyRow.editing
                         Layout.fillWidth: true
-                        font.pixelSize: 12; color: AgentTheme.surfaceText
+                        font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceText
                         selectionColor: AgentTheme.primary; selectedTextColor: AgentTheme.primaryText
                         clip: true; maximumLength: 100
                         onAccepted: historyRow.finishEdit(true)
                         onActiveFocusChanged: if (!activeFocus) historyRow.finishEdit(false)
                         Keys.onEscapePressed: historyRow.finishEdit(false)
                     }
-                    Text {
+                    StyledText {
                         text: { var d = new Date(modelData.date); return d.toLocaleDateString(undefined, {month:"short", day:"numeric"}) }
-                        font.pixelSize: 10; color: AgentTheme.surfaceVariantText
+                        font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceVariantText
                     }
 
                     // Above the row's own MouseArea, so it takes the click instead
@@ -970,12 +970,12 @@ Item {
                 width: parent.width - 32
                 spacing: 16
 
-                Text {
+                StyledText {
                     width: parent.width
                     text: chatRoot.confirmText
                     wrapMode: Text.Wrap
                     color: AgentTheme.surfaceText
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontSizeMedium
                     horizontalAlignment: Text.AlignHCenter
                 }
 
@@ -986,9 +986,9 @@ Item {
                     Rectangle {
                         width: 92; height: 30; radius: 15
                         color: cancelBtnArea.containsMouse ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.5) : Theme.withAlpha(AgentTheme.surfaceVariant, 0.25)
-                        Text {
+                        StyledText {
                             anchors.centerIn: parent; text: AgentService.tr("confirm.cancel")
-                            font.pixelSize: 12; color: AgentTheme.surfaceText
+                            font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceText
                         }
                         MouseArea {
                             id: cancelBtnArea
@@ -1001,9 +1001,9 @@ Item {
                     Rectangle {
                         width: 92; height: 30; radius: 15
                         color: deleteBtnArea.containsMouse ? (AgentTheme.danger) : Theme.withAlpha(AgentTheme.danger, 0.8)
-                        Text {
+                        StyledText {
                             anchors.centerIn: parent; text: AgentService.tr("confirm.delete")
-                            font.pixelSize: 12; font.weight: Font.Bold; color: AgentTheme.onDark
+                            font.pixelSize: Theme.fontSizeSmall; font.weight: Font.Bold; color: AgentTheme.onDark
                         }
                         MouseArea {
                             id: deleteBtnArea
@@ -1060,12 +1060,12 @@ Item {
                 width: parent.width - 32
                 spacing: 12
 
-                Text {
+                StyledText {
                     width: parent.width
                     text: AgentService.tr("permission.title")
                     wrapMode: Text.Wrap
                     color: AgentTheme.surfaceText
-                    font.pixelSize: 13; font.weight: Font.Bold
+                    font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Bold
                     horizontalAlignment: Text.AlignHCenter
                 }
 
@@ -1079,13 +1079,13 @@ Item {
                         anchors.fill: parent
                         contentHeight: permText.implicitHeight + 16
                         boundsBehavior: Flickable.StopAtBounds
-                        Text {
+                        StyledText {
                             id: permText
                             x: 8; y: 8; width: parent.width - 16
                             text: AgentService.pendingPermission ? AgentService.pendingPermission.text : ""
                             wrapMode: Text.WrapAnywhere
                             color: AgentTheme.surfaceText
-                            font.pixelSize: 11; font.family: "monospace"
+                            font.pixelSize: Theme.fontSizeSmall; isMonospace: true
                         }
                     }
                 }
@@ -1097,9 +1097,9 @@ Item {
                     Rectangle {
                         width: 110; height: 30; radius: 15
                         color: denyArea.containsMouse ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.5) : Theme.withAlpha(AgentTheme.surfaceVariant, 0.25)
-                        Text {
+                        StyledText {
                             anchors.centerIn: parent; text: AgentService.tr("permission.deny")
-                            font.pixelSize: 12; color: AgentTheme.surfaceText
+                            font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceText
                         }
                         MouseArea {
                             id: denyArea
@@ -1112,9 +1112,9 @@ Item {
                     Rectangle {
                         width: 110; height: 30; radius: 15
                         color: allowArea.containsMouse ? AgentTheme.primary : Theme.withAlpha(AgentTheme.primary, 0.8)
-                        Text {
+                        StyledText {
                             anchors.centerIn: parent; text: AgentService.tr("permission.allow")
-                            font.pixelSize: 12; font.weight: Font.Bold; color: AgentTheme.primaryText
+                            font.pixelSize: Theme.fontSizeSmall; font.weight: Font.Bold; color: AgentTheme.primaryText
                         }
                         MouseArea {
                             id: allowArea
@@ -1216,9 +1216,9 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
-                Text {
+                StyledText {
                     id: toolText; text: content; color: AgentTheme.surfaceVariantText
-                    font.pixelSize: 11; font.family: "monospace"
+                    font.pixelSize: Theme.fontSizeSmall; isMonospace: true
                     elide: Text.ElideRight
                     anchors.left: toolIcon.right; anchors.leftMargin: 6
                     anchors.right: parent.right; anchors.rightMargin: 10
