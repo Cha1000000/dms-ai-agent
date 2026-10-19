@@ -146,9 +146,10 @@ Item {
     // Liquid glass: translucent bubbles over a blurred background. Without blur
     // (switched off in DMS, or not supported by the compositor) a translucent
     // bubble is hard to read, so the bubbles stay solid then.
-    readonly property bool glassOn: AgentService.liquidGlass && BlurService.enabled
+    readonly property bool glassOn: AgentService.liquidGlass && AgentTheme.glassAllowed && BlurService.enabled
+    readonly property real panelAlpha: AgentService.backgroundOpacity / 100
     function bubbleColor(base, glassAlpha) {
-        return Theme.withAlpha(base, glassOn ? glassAlpha : AgentService.backgroundOpacity / 100);
+        return Theme.withAlpha(base, glassOn ? glassAlpha : panelAlpha);
     }
 
     // Everything that gets its own patch of blur. The panel builds the blur
@@ -308,6 +309,19 @@ Item {
         onTriggered: AgentService.attachError = ""
     }
 
+    // Drawn behind the card instead of through a layer on it: a layer renders the card's text
+    // and icons into a texture, which makes them soft. A shadow under a translucent card
+    // would darken what the glass shows, so it is for the solid look only.
+    RectangularShadow {
+        visible: !chatRoot.glassOn
+        x: inputCard.x; y: inputCard.y; width: inputCard.width; height: inputCard.height
+        z: inputCard.z - 1
+        radius: inputCard.radius
+        blur: 16
+        offset: Qt.vector2d(0, -2)
+        color: Theme.withAlpha(AgentTheme.shadow, 0.4)
+    }
+
     // --- Input Card (anchored to bottom) ---
     Rectangle {
         id: inputCard
@@ -324,15 +338,6 @@ Item {
         onHeightChanged: chatRoot.bumpGlass()
 
         Loader { anchors.fill: parent; active: chatRoot.glassOn; sourceComponent: GlassSpecular { radius: 20 } }
-
-        // A shadow under a translucent card would darken what the glass shows.
-        layer.enabled: !chatRoot.glassOn
-        layer.smooth: true
-        layer.textureSize: Qt.size(width * Math.max(1, AgentService.uiScale / 100), height * Math.max(1, AgentService.uiScale / 100))
-        layer.effect: MultiEffect {
-            shadowEnabled: true; shadowBlur: 0.8
-            shadowVerticalOffset: -2; shadowColor: Theme.withAlpha(AgentTheme.shadow, 0.4)
-        }
 
         ColumnLayout {
             id: inputCol; width: parent.width; spacing: 0
@@ -1241,7 +1246,7 @@ Item {
                 id: uRect; anchors.right: parent.right
                 width: Math.min(parent.width * 0.8, uMetric.implicitWidth + 28)
                 height: uTxt.implicitHeight + 11
-                radius: 16; color: chatRoot.glassOn ? "transparent" : Theme.withAlpha(AgentTheme.primary, AgentService.backgroundOpacity / 100)
+                radius: 16; color: chatRoot.glassOn ? "transparent" : Theme.withAlpha(AgentTheme.primary, panelAlpha)
                 onXChanged: chatRoot.bumpGlass()
 
                 Component.onCompleted: chatRoot.glassReg(uRect)
@@ -1314,7 +1319,7 @@ Item {
                 id: aRect; anchors.left: parent.left
                 width: Math.min(parent.width * 0.85, aMetric.implicitWidth + 28)
                 height: aTxt.implicitHeight + 16
-                radius: 16; color: chatRoot.glassOn ? "transparent" : Theme.withAlpha(AgentTheme.surfaceContainer, AgentService.backgroundOpacity / 100)
+                radius: 16; color: chatRoot.glassOn ? "transparent" : Theme.withAlpha(AgentTheme.surfaceContainer, panelAlpha)
 
                 Component.onCompleted: chatRoot.glassReg(aRect)
                 Component.onDestruction: chatRoot.glassUnreg(aRect)

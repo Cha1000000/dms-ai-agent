@@ -35,10 +35,10 @@ Singleton {
             outlineVariant: "#44444e"
         },
         light: {
-            neon: false,
-            primary: "#3b6fd4", primaryText: "#ffffff",
+            neon: false, glass: false,
+            primary: "#1f4fb0", primaryText: "#ffffff",
             surface: "#f6f6f8", surfaceContainer: "#ffffff", surfaceContainerHighest: "#ececf1",
-            surfaceVariant: "#e0e0e8", surfaceText: "#1c1c20", surfaceVariantText: "#5c5c68",
+            surfaceVariant: "#e0e0e8", surfaceText: "#1c1c20", surfaceVariantText: "#3a3a46",
             outlineVariant: "#c4c4ce"
         }
     })
@@ -91,6 +91,8 @@ Singleton {
     readonly property color onDark: pick("onDark", "#FFFFFF")
 
     readonly property bool neonEnabled: _preset.neon === true
+    // Glass tints are made for dark backdrops; a light theme is drawn solid.
+    readonly property bool glassAllowed: _preset.glass !== false
     readonly property color neon0: pick("neon0", "#3EE0FF")
     readonly property color neon1: pick("neon1", "#4F7BFF")
     readonly property color neon2: pick("neon2", "#9B5CFF")
