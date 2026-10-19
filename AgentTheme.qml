@@ -24,7 +24,7 @@ Singleton {
             primary: "#b8101a", primaryText: "#ffffff",
             surface: "#140607", surfaceContainer: "#1c0a0c", surfaceContainerHighest: "#2a1013",
             surfaceVariant: "#2e1215", surfaceText: "#f2e6e6", surfaceVariantText: "#b59a9c",
-            outlineVariant: "#5a2a2e", error: "#ff2a3a",
+            outlineVariant: "#5a2a2e", danger: "#e0182d",
             neon0: "#ff2a2a", neon1: "#e0102a", neon2: "#ff2a55", neon3: "#b5083a"
         },
         dark: {
@@ -32,14 +32,14 @@ Singleton {
             primary: "#7aa2f7", primaryText: "#101014",
             surface: "#16161a", surfaceContainer: "#1e1e24", surfaceContainerHighest: "#2a2a32",
             surfaceVariant: "#34343d", surfaceText: "#e6e6ea", surfaceVariantText: "#9a9aa5",
-            outlineVariant: "#44444e"
+            outlineVariant: "#44444e", danger: "#ef5350"
         },
         light: {
             neon: false, glass: false,
             primary: "#1f4fb0", primaryText: "#ffffff",
             surface: "#f6f6f8", surfaceContainer: "#ffffff", surfaceContainerHighest: "#ececf1",
             surfaceVariant: "#e0e0e8", surfaceText: "#1c1c20", surfaceVariantText: "#3a3a46",
-            outlineVariant: "#c4c4ce", error: "#d32f2f"
+            outlineVariant: "#c4c4ce", danger: "#d32f2f"
         }
     })
     readonly property var presetIds: ["jarvis", "dms", "umbrella", "dark", "light"]
@@ -96,8 +96,10 @@ Singleton {
     readonly property color surfaceVariantText: pick("surfaceVariantText", Theme.surfaceVariantText)
     readonly property color outlineVariant: pick("outlineVariant", Theme.outlineVariant)
     readonly property color shadow: pick("shadow", Theme.shadow || "#000000")
-    readonly property color error: pick("error", "#EF4444")
-    readonly property color warning: pick("warning", "#FF9800")
+    readonly property color error: pick("error", Theme.error || "#EF4444")
+    readonly property color warning: pick("warning", Theme.warning || "#FF9800")
+    // Buttons that delete something: an action, not an error, so not tied to the DMS error color.
+    readonly property color danger: pick("danger", "#EF4444")
     readonly property color onDark: pick("onDark", "#FFFFFF")
 
     readonly property bool neonEnabled: _preset.neon === true
@@ -110,7 +112,7 @@ Singleton {
 
     readonly property var roleNames: ["primary", "primaryText", "surface", "surfaceContainer",
         "surfaceContainerHighest", "surfaceVariant", "surfaceText", "surfaceVariantText",
-        "outlineVariant", "error", "warning", "neon0", "neon1", "neon2", "neon3"]
+        "outlineVariant", "error", "warning", "danger", "neon0", "neon1", "neon2", "neon3"]
 
     function _hex(v) { return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : ""; }
 

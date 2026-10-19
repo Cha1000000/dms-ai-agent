@@ -419,7 +419,7 @@ Item {
                             anchors.top: parent.top; anchors.right: parent.right
                             anchors.margins: 2
                             width: 16; height: 16; radius: 8
-                            color: dropAttachArea.containsMouse ? AgentTheme.error
+                            color: dropAttachArea.containsMouse ? AgentTheme.danger
                                                                 : Theme.withAlpha(AgentTheme.shadow, 0.6)
 
                             DankIcon {
@@ -802,7 +802,7 @@ Item {
             anchors.topMargin: 6; anchors.rightMargin: 8
             width: clearAllRow.width + 16; height: 24; radius: 12
             z: 2
-            color: clearAllArea.containsMouse ? Theme.withAlpha(AgentTheme.error, 0.15) : "transparent"
+            color: clearAllArea.containsMouse ? Theme.withAlpha(AgentTheme.danger, 0.15) : "transparent"
             border.width: 1
             border.color: Theme.withAlpha(AgentTheme.outlineVariant, 0.5)
 
@@ -812,12 +812,12 @@ Item {
                 spacing: 4
                 DankIcon {
                     name: "delete"; size: 13
-                    color: clearAllArea.containsMouse ? (AgentTheme.error) : AgentTheme.surfaceVariantText
+                    color: clearAllArea.containsMouse ? (AgentTheme.danger) : AgentTheme.surfaceVariantText
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
                     text: AgentService.tr("history.clearAll"); font.pixelSize: 10
-                    color: clearAllArea.containsMouse ? (AgentTheme.error) : AgentTheme.surfaceVariantText
+                    color: clearAllArea.containsMouse ? (AgentTheme.danger) : AgentTheme.surfaceVariantText
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
@@ -900,14 +900,14 @@ Item {
                         visible: !historyRow.editing
                         Layout.preferredWidth: 20; Layout.preferredHeight: 20
                         radius: 10
-                        color: dropRowArea.containsMouse ? Theme.withAlpha(AgentTheme.error, 0.2) : "transparent"
+                        color: dropRowArea.containsMouse ? Theme.withAlpha(AgentTheme.danger, 0.2) : "transparent"
                         opacity: dropRowArea.containsMouse ? 1 : (hArea.containsMouse ? 0.9 : 0.45)
                         Behavior on opacity { NumberAnimation { duration: 100 } }
 
                         DankIcon {
                             anchors.centerIn: parent
                             name: "close"; size: 12
-                            color: dropRowArea.containsMouse ? (AgentTheme.error) : AgentTheme.surfaceVariantText
+                            color: dropRowArea.containsMouse ? (AgentTheme.danger) : AgentTheme.surfaceVariantText
                         }
 
                         MouseArea {
@@ -1000,7 +1000,7 @@ Item {
 
                     Rectangle {
                         width: 92; height: 30; radius: 15
-                        color: deleteBtnArea.containsMouse ? (AgentTheme.error) : Theme.withAlpha(AgentTheme.error, 0.8)
+                        color: deleteBtnArea.containsMouse ? (AgentTheme.danger) : Theme.withAlpha(AgentTheme.danger, 0.8)
                         Text {
                             anchors.centerIn: parent; text: AgentService.tr("confirm.delete")
                             font.pixelSize: 12; font.weight: Font.Bold; color: AgentTheme.onDark
