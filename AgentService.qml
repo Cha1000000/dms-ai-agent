@@ -97,7 +97,6 @@ Singleton {
         "- Focus left/right/up/down: niri msg action focus-column-left|right, focus-window-up|down\n" +
         "- Move column: niri msg action move-column-left|right\n" +
         "- Toggle overview: niri msg action toggle-overview\n\n" +
-        "MUSIC: ~/go/bin/spogo (play, pause, next, prev, status, search track X, volume N)\n\n" +
         "Match fuzzy — 'brave' matches 'brave-browser-nightly', 'whatsapp' matches 'WhatsApp Web — Mozilla Firefox'.\n\n" +
         "IMPORTANT: When launching applications or running long-lived processes, ALWAYS detach them from the shell. " +
         "Use: setsid <command> >/dev/null 2>&1 & disown\n" +
