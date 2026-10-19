@@ -81,6 +81,7 @@ Singleton {
     // shows an Allow / Deny dialog. "auto": no questions asked (--dangerously-skip-permissions).
     property string permissionMode: "confirm"
     readonly property string _noConfirmSentence: "Execute actions immediately, never ask for confirmation. "
+    readonly property string _stateDirSentence: "Your working directory is a private state dir, not the user's home. "
     property string systemPrompt: "You are a concise desktop assistant on Linux with niri (Wayland compositor) and DankMaterialShell. " +
         "You have full tool access (Bash, Read, Write, Edit). Execute actions immediately, never ask for confirmation. " +
         "Respond in user's language. Be concise.\n\n" +
@@ -580,9 +581,36 @@ Singleton {
     readonly property string homeDir: Quickshell.env("HOME") || ""
     // Agent sessions live in their own Claude Code project (a slug of this dir),
     // apart from interactive sessions started in $HOME. history.py relies on it
-    // too, so both are launched from here.
-    readonly property string workDir: homeDir + "/.local/state/dms-agent"
-    readonly property string cdWorkDir: "mkdir -p " + shellQuote(workDir) + " && cd " + shellQuote(workDir) + " && "
+    // too, so both are launched from here. The setting can point the agent at
+    // any other directory, e.g. a project: the chats and their history then
+    // belong to that directory, as with `claude` started there.
+    property string customWorkDir: ""
+    readonly property string defaultWorkDir: homeDir + "/.local/state/dms-agent"
+    readonly property string workDir: customWorkDir !== "" ? customWorkDir : defaultWorkDir
+    readonly property string cdWorkDir: (customWorkDir !== "" ? "" : "mkdir -p " + shellQuote(workDir) + " && ")
+        + "cd " + shellQuote(workDir) + " && "
+
+    // "~", "~/x" and plain relative paths (taken from $HOME) become absolute.
+    function normalizeDir(path) {
+        var p = String(path || "").trim();
+        if (p === "") return "";
+        if (p === "~" || p.indexOf("~/") === 0) p = homeDir + p.substring(1);
+        else if (p.charAt(0) !== "/") p = homeDir + "/" + p;
+        while (p.length > 1 && p.charAt(p.length - 1) === "/") p = p.substring(0, p.length - 1);
+        return p;
+    }
+
+    // A conversation cannot move between directories (Claude Code keeps them per
+    // project), so changing the directory starts with a clean chat and that
+    // directory's own history.
+    function setWorkDir(path) {
+        var dir = normalizeDir(path);
+        if (dir === defaultWorkDir) dir = "";
+        if (dir === customWorkDir) return;
+        customWorkDir = dir;
+        clearMessages();
+        loadHistory();
+    }
 
     Component.onCompleted: { loadHistory(); refreshModels(); }
 
@@ -851,6 +879,15 @@ Singleton {
     }
 
     function callClaude(prompt) {
+        if (customWorkDir === "") { _launchClaude(prompt); return; }
+        // A typo in the setting should say so, not end in "agent exited".
+        runQuietExit("test -d " + shellQuote(customWorkDir) + " && echo ok || echo missing", function(output) {
+            if (String(output).trim() === "ok") _launchClaude(prompt);
+            else finishResponse(tr("error.workDirMissing") + " " + customWorkDir);
+        });
+    }
+
+    function _launchClaude(prompt) {
         statusText = tr(activeEffort !== "" ? "status.thinking" : "status.processing");
         _gotResult = false;
         _lastText = "";
@@ -859,6 +896,8 @@ Singleton {
         // exec: bash is replaced by claude, so Cancel's SIGTERM reaches claude itself.
         var confirm = permissionMode !== "auto";
         var prompt_ = confirm ? systemPrompt.replace(_noConfirmSentence, "") : systemPrompt;
+        if (customWorkDir !== "")
+            prompt_ = prompt_.replace(_stateDirSentence, "Your working directory is " + customWorkDir + ", a directory the user chose: relative paths refer to it. ");
         var cmd = cdWorkDir + "exec claude -p"
             + " --model " + shellQuote(claudeModel)
             + (activeEffort !== "" ? " --effort " + shellQuote(activeEffort) : "")

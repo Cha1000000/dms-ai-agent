@@ -115,6 +115,7 @@ PluginComponent {
         AgentService.voiceVenv = pluginData.voiceVenv || "";
         AgentService.voiceDevice = pluginData.voiceDevice || "";
         AgentService.voiceWarmup = pluginData.voiceWarmup === true;
+        AgentService.setWorkDir(pluginData.workDir || "");
         AgentService.permissionMode = pluginData.permissionMode === "auto" ? "auto" : "confirm";
         AgentTheme.apply(pluginData);
         AgentService.updateNotify = pluginData.updateNotify === true;

@@ -52,6 +52,7 @@ var STRINGS = {
         "error.noSpeech": "No speech recognized",
         "error.noRecognition": "No response from speech recognition",
         "error.noWindow": "Could not capture the focused window",
+        "error.workDirMissing": "Working directory not found:",
 
         "update.available": "Update available",
         "update.how": "Settings → Plugins → Update",
@@ -121,6 +122,7 @@ var STRINGS = {
         "error.noSpeech": "Речь не распознана",
         "error.noRecognition": "Нет ответа от распознавания речи",
         "error.noWindow": "Не удалось снять активное окно",
+        "error.workDirMissing": "Рабочий каталог не найден:",
 
         "update.available": "Доступно обновление",
         "update.how": "Настройки → Плагины → Обновить",
