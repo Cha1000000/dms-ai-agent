@@ -15,8 +15,8 @@ hotkey), type or say what you need — "open Telegram on workspace 2", "how much
 "find the PDFs I downloaded today" — and watch the agent do it, step by step.
 
 It is a fork of [Francisdelca/dms-agent](https://github.com/Francisdelca/dms-agent) that fixes a few
-bugs and adds the things that were missing for daily use. The fork merges the original every day,
-so improvements made there arrive here too.
+bugs and adds the things that were missing for daily use. It is maintained independently: the
+original has not changed since April 2026, and nothing is merged from it automatically.
 
 ## What's different from the original
 
@@ -229,22 +229,6 @@ over: commit and push, and it resumes.
 If the chat still behaves like the old version afterwards, restart the shell —
 `systemctl --user restart dms.service`. Reloading the plugin alone refreshes the bar widget while
 the chat panel stays in memory with the QML it was built from.
-
-### Upstream sync
-
-A [workflow](.github/workflows/sync-upstream.yml) merges
-[Francisdelca/dms-agent](https://github.com/Francisdelca/dms-agent) into `main` every day:
-
-- **clean merge** → pushed right away, you get it with the next DMS update;
-- **conflict** → nothing is pushed; an issue titled *Upstream sync: merge conflict* lists the files
-  and the new upstream commits. Resolve it locally with
-  [`scripts/sync-upstream.sh`](scripts/sync-upstream.sh), which leaves the conflict in your working
-  tree. Rule of thumb: when upstream now contains the same fix, take theirs; keep ours for
-  fork-only features. `git rerere` is enabled, so a resolution is reused if the same hunk
-  conflicts again.
-
-Merges, not rebases, are deliberate: a rewritten history would make every installed copy fall back
-to deleting and re-cloning the plugin.
 
 ## Good to know
 

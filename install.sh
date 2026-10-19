@@ -15,7 +15,6 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/Cha1000000/dms-ai-agent"
-UPSTREAM_URL="https://github.com/Francisdelca/dms-agent"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 PLUGIN_DIR="$CONFIG_HOME/DankMaterialShell/plugins/dmsAgent"
 VENV="${XDG_DATA_HOME:-$HOME/.local/share}/dms-ai-agent/whisper-venv"
@@ -78,7 +77,6 @@ else
     fi
     git clone --quiet "$REPO_URL" "$PLUGIN_DIR" && ok "cloned into $PLUGIN_DIR"
 fi
-git -C "$PLUGIN_DIR" remote get-url upstream >/dev/null 2>&1 || git -C "$PLUGIN_DIR" remote add upstream "$UPSTREAM_URL"
 chmod +x "$PLUGIN_DIR"/*.sh "$PLUGIN_DIR"/scripts/*.sh 2>/dev/null || true
 mkdir -p "${XDG_STATE_HOME:-$HOME/.local/state}/dms-agent"
 
