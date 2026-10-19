@@ -600,6 +600,27 @@ Singleton {
         return p;
     }
 
+    // The chat's directory popup. Goes through the plugin settings, so the settings
+    // page and the chat always show the same value; DmsAgent.qml applies it.
+    function chooseWorkDir(path, done) {
+        var dir = normalizeDir(path);
+        if (dir === defaultWorkDir) dir = "";
+        if (dir === "") { settingChosen("workDir", ""); done(true); return; }
+        runQuietExit("test -d " + shellQuote(dir) + " && echo ok || echo missing", function(output) {
+            var ok = String(output).trim() === "ok";
+            if (ok) settingChosen("workDir", dir);
+            done(ok);
+        });
+    }
+
+    // Folder chooser of the desktop (the same portal dialog as for attachments).
+    function pickWorkDir(done) {
+        run("python3 " + shellQuote(pickScript) + " --dir " + shellQuote(workDir), function(output) {
+            var path = String(output).split("\n")[0].trim();
+            if (path !== "") done(path);
+        });
+    }
+
     // A conversation cannot move between directories (Claude Code keeps them per
     // project), so changing the directory starts with a clean chat and that
     // directory's own history.

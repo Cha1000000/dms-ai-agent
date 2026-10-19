@@ -105,6 +105,10 @@ Singleton {
     readonly property bool neonEnabled: _preset.neon === true
     // Glass tints are made for dark backdrops; a light theme is drawn solid.
     readonly property bool glassAllowed: _preset.glass !== false
+    // Your own message bubbles: a gradient between two of the neon colors in themes with neon
+    // (matching the window rim), the accent otherwise.
+    readonly property color bubbleFrom: neonEnabled ? neon1 : primary
+    readonly property color bubbleTo: neonEnabled ? neon2 : primary
     readonly property color neon0: pick("neon0", "#3EE0FF")
     readonly property color neon1: pick("neon1", "#4F7BFF")
     readonly property color neon2: pick("neon2", "#9B5CFF")

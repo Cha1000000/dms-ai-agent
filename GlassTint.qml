@@ -12,6 +12,8 @@ Item {
     required property Item chat
     required property Rectangle bubble
     property color color
+    // Differs from color for a horizontal gradient.
+    property color toColor: color
     // Same radius as the bubble, which is also what the blur patch uses.
     readonly property real radius: bubble.radius
 
@@ -26,6 +28,14 @@ Item {
         visible: height > 0 && width > 0
         radius: Math.min(tint.radius, height / 2)
         color: tint.color
+        gradient: tint.toColor !== tint.color ? tintGradient : null
+
+        Gradient {
+            id: tintGradient
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: tint.color }
+            GradientStop { position: 1.0; color: tint.toColor }
+        }
 
         GlassSpecular { radius: body.radius }
     }

@@ -156,8 +156,10 @@ Item {
         return Math.min(0.97, alpha * k);
     }
     // Text on your own bubbles. On glass the bubble is the accent tinted into a dark
-    // backdrop, so the text that suits a solid accent (dark on a light accent) is lost.
-    readonly property color userBubbleText: glassOn ? AgentTheme.onDark : AgentTheme.primaryText
+    // backdrop, and the neon colors are mid-dark, so the text that suits a solid light
+    // accent (dark) is lost on both.
+    readonly property bool bubbleGradient: AgentTheme.neonEnabled
+    readonly property color userBubbleText: (glassOn || bubbleGradient) ? AgentTheme.onDark : AgentTheme.primaryText
     function bubbleColor(base, glassAlpha) {
         return Theme.withAlpha(base, glassOn ? glassTint(glassAlpha) : panelAlpha);
     }
@@ -524,7 +526,7 @@ Item {
                             DankIcon { name: modelDropdown.visible ? "expand_less" : "expand_more"; color: AgentTheme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
                         }
 
-                        MouseArea { id: modelDropArea; anchors.fill: parent; hoverEnabled: true; onClicked: { effortDropdown.visible = false; modelDropdown.visible = !modelDropdown.visible; if (modelDropdown.visible) AgentService.refreshModels(); } }
+                        MouseArea { id: modelDropArea; anchors.fill: parent; hoverEnabled: true; onClicked: { effortDropdown.visible = false; workDirPopup.visible = false; modelDropdown.visible = !modelDropdown.visible; if (modelDropdown.visible) AgentService.refreshModels(); } }
                     }
 
                     // Effort
@@ -544,27 +546,37 @@ Item {
                             onClicked: {
                                 effortDropdown.leftOffset = effortButton.mapToItem(chatRoot, 0, 0).x;
                                 effortDropdown.visible = !effortDropdown.visible;
-                                modelDropdown.visible = false;
+                                modelDropdown.visible = false; workDirPopup.visible = false;
                             }
                         }
                     }
 
-                    // Working directory, only when the setting points somewhere else
+                    // Working directory: shows where the agent runs; click to change it
                     Rectangle {
-                        visible: AgentService.customWorkDir !== ""
-                        width: Math.min(folderRow.implicitWidth + 14, 120); height: 26; radius: 13
+                        id: workDirButton
+                        width: Math.min(folderRow.implicitWidth + 14, 130); height: 26; radius: 13
                         Layout.preferredWidth: width
-                        color: Theme.withAlpha(AgentTheme.surfaceVariant, 0.3)
+                        color: AgentService.customWorkDir !== "" ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.3)
+                            : (workDirArea.containsMouse || workDirPopup.visible ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.3) : "transparent")
                         Row {
                             id: folderRow; anchors.centerIn: parent; spacing: 4
                             DankIcon { name: "folder"; color: AgentTheme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
                             StyledText {
-                                text: AgentService.customWorkDir.split("/").pop()
-                                width: Math.min(implicitWidth, 80)
+                                text: AgentService.customWorkDir !== "" ? AgentService.customWorkDir.split("/").pop() : AgentService.tr("workdir.default")
+                                width: Math.min(implicitWidth, 90)
                                 font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter
                             }
                         }
-                        TipArea { text: AgentService.tr("tip.workDir") + ": " + AgentService.customWorkDir }
+                        MouseArea {
+                            id: workDirArea; anchors.fill: parent; hoverEnabled: true
+                            onClicked: {
+                                modelDropdown.visible = false; effortDropdown.visible = false;
+                                workDirPopup.leftOffset = workDirButton.mapToItem(chatRoot, 0, 0).x;
+                                workDirPopup.visible = !workDirPopup.visible;
+                                if (workDirPopup.visible) workDirPopup.open();
+                            }
+                        }
+                        TipArea { text: AgentService.tr("tip.workDir") + ": " + AgentService.workDir }
                     }
 
                     // New chat
@@ -763,6 +775,93 @@ Item {
                         DankIcon { visible: AgentService.isCurrentModel(modelData); name: "check"; color: AgentTheme.primary; size: 14 }
                     }
                     MouseArea { id: optArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.chooseModel(modelData.id); modelDropdown.visible = false; } }
+                }
+            }
+        }
+    }
+
+    // --- Working directory popup ---
+    Rectangle {
+        id: workDirPopup; visible: false
+        property real leftOffset: 8
+        property bool missing: false
+        anchors.bottom: inputCard.top; anchors.bottomMargin: 6
+        x: Math.max(8, Math.min(leftOffset, chatRoot.width - width - 8))
+        width: Math.min(chatRoot.width - 16, 380); height: wdCol.implicitHeight + 24; radius: 12
+        color: AgentTheme.surfaceContainerHighest
+        z: 20
+
+        function open() { missing = false; wdInput.text = AgentService.customWorkDir; wdInput.forceActiveFocus(); wdInput.selectAll(); }
+        function close() { visible = false; inputField.forceActiveFocus(); }
+        function apply(path) {
+            AgentService.chooseWorkDir(path, function(ok) {
+                workDirPopup.missing = !ok;
+                if (ok) workDirPopup.close();
+            });
+        }
+
+        Column {
+            id: wdCol
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            anchors.margins: 12; spacing: 8
+
+            StyledText { text: AgentService.tr("workdir.title"); font.pixelSize: Theme.fontSizeSmall; font.weight: Font.Bold; color: AgentTheme.surfaceText }
+
+            Row {
+                width: parent.width; spacing: 6
+                Rectangle {
+                    width: parent.width - 34 - 6; height: 34; radius: 10
+                    color: Theme.withAlpha(AgentTheme.surfaceVariant, 0.3)
+                    border.width: workDirPopup.missing ? 1 : 0; border.color: AgentTheme.error
+                    TextInput {
+                        id: wdInput
+                        anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true; selectByMouse: true
+                        color: AgentTheme.surfaceText; selectionColor: AgentTheme.primary; selectedTextColor: AgentTheme.primaryText
+                        font.pixelSize: Theme.fontSizeSmall
+                        onTextEdited: workDirPopup.missing = false
+                        onAccepted: workDirPopup.apply(text)
+                        Keys.onEscapePressed: function(event) { event.accepted = true; workDirPopup.close(); }
+                        StyledText {
+                            anchors.fill: parent; visible: wdInput.text === ""
+                            text: AgentService.tr("workdir.placeholder")
+                            font.pixelSize: Theme.fontSizeSmall; color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5)
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 34; height: 34; radius: 10
+                    color: pickArea.containsMouse ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.5) : Theme.withAlpha(AgentTheme.surfaceVariant, 0.3)
+                    DankIcon { anchors.centerIn: parent; name: "folder_open"; color: AgentTheme.surfaceText; size: 18 }
+                    MouseArea {
+                        id: pickArea; anchors.fill: parent; hoverEnabled: true
+                        onClicked: AgentService.pickWorkDir(function(path) { wdInput.text = path; workDirPopup.apply(path); })
+                    }
+                    TipArea { text: AgentService.tr("tip.workDirPick") }
+                }
+            }
+
+            StyledText {
+                visible: workDirPopup.missing; text: AgentService.tr("workdir.missing")
+                font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.error
+            }
+
+            Row {
+                width: parent.width; spacing: 8
+                layoutDirection: Qt.RightToLeft
+                Rectangle {
+                    width: applyText.implicitWidth + 28; height: 28; radius: 14
+                    color: applyArea.containsMouse ? AgentTheme.primary : Theme.withAlpha(AgentTheme.primary, 0.8)
+                    StyledText { id: applyText; anchors.centerIn: parent; text: AgentService.tr("workdir.apply"); font.pixelSize: Theme.fontSizeSmall; font.weight: Font.Bold; color: AgentTheme.primaryText }
+                    MouseArea { id: applyArea; anchors.fill: parent; hoverEnabled: true; onClicked: workDirPopup.apply(wdInput.text) }
+                }
+                Rectangle {
+                    visible: AgentService.customWorkDir !== ""
+                    width: resetText.implicitWidth + 28; height: 28; radius: 14
+                    color: resetArea.containsMouse ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.5) : Theme.withAlpha(AgentTheme.surfaceVariant, 0.25)
+                    StyledText { id: resetText; anchors.centerIn: parent; text: AgentService.tr("workdir.reset"); font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceText }
+                    MouseArea { id: resetArea; anchors.fill: parent; hoverEnabled: true; onClicked: workDirPopup.apply("") }
                 }
             }
         }
@@ -1274,8 +1373,16 @@ Item {
                 id: uRect; anchors.right: parent.right
                 width: Math.min(parent.width * 0.8, uMetric.implicitWidth + 28)
                 height: uTxt.implicitHeight + 11
-                radius: 16; color: chatRoot.glassOn ? "transparent" : Theme.withAlpha(AgentTheme.primary, panelAlpha)
+                radius: 16; color: chatRoot.glassOn ? "transparent" : Theme.withAlpha(AgentTheme.bubbleFrom, panelAlpha)
+                gradient: !chatRoot.glassOn && chatRoot.bubbleGradient ? uGradient : null
                 onXChanged: chatRoot.bumpGlass()
+
+                Gradient {
+                    id: uGradient
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: Theme.withAlpha(AgentTheme.bubbleFrom, chatRoot.panelAlpha) }
+                    GradientStop { position: 1.0; color: Theme.withAlpha(AgentTheme.bubbleTo, chatRoot.panelAlpha) }
+                }
 
                 Component.onCompleted: chatRoot.glassReg(uRect)
                 Component.onDestruction: chatRoot.glassUnreg(uRect)
@@ -1284,7 +1391,11 @@ Item {
 
                 Loader {
                     anchors.fill: parent; active: chatRoot.glassOn
-                    sourceComponent: GlassTint { chat: chatRoot; bubble: uRect; color: Theme.withAlpha(AgentTheme.primary, chatRoot.glassTint(0.75)) }
+                    sourceComponent: GlassTint {
+                        chat: chatRoot; bubble: uRect
+                        color: Theme.withAlpha(AgentTheme.bubbleFrom, chatRoot.glassTint(0.75))
+                        toColor: Theme.withAlpha(AgentTheme.bubbleTo, chatRoot.glassTint(0.75))
+                    }
                 }
 
                 HoverHandler { id: uHover }
@@ -1321,9 +1432,9 @@ Item {
                     Behavior on opacity { NumberAnimation { duration: 120 } }
 
                     label: AgentService.tr("bubble.copyText")
-                    fg: AgentTheme.primary
+                    fg: AgentTheme.bubbleFrom
                     bg: chatRoot.userBubbleText
-                    copiedColor: AgentTheme.primary
+                    copiedColor: AgentTheme.bubbleFrom
                     onRequested: chatRoot.copyToClipboard(content)
                 }
             }
