@@ -58,6 +58,7 @@ var STRINGS = {
         "update.how": "Settings → Plugins → Update",
 
         "tip.attach": "Attach a file",
+        "tip.workDir": "Working directory",
         "tip.newChat": "New conversation",
         "tip.history": "History",
         "tip.posLeft": "Chat at the left edge",
@@ -128,6 +129,7 @@ var STRINGS = {
         "update.how": "Настройки → Плагины → Обновить",
 
         "tip.attach": "Прикрепить файл",
+        "tip.workDir": "Рабочий каталог",
         "tip.newChat": "Новый разговор",
         "tip.history": "История",
         "tip.posLeft": "Чат у левого края",

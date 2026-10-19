@@ -898,7 +898,7 @@ Singleton {
         var prompt_ = confirm ? systemPrompt.replace(_noConfirmSentence, "") : systemPrompt;
         if (customWorkDir !== "")
             prompt_ = prompt_.replace(_stateDirSentence, "Your working directory is " + customWorkDir + ", a directory the user chose: relative paths refer to it. ");
-        var cmd = cdWorkDir + "exec claude -p"
+        var cmd = cdWorkDir + "DMS_AGENT=1 exec claude -p"
             + " --model " + shellQuote(claudeModel)
             + (activeEffort !== "" ? " --effort " + shellQuote(activeEffort) : "")
             + (confirm ? " --input-format stream-json --permission-mode default --permission-prompt-tool stdio"

@@ -95,7 +95,7 @@ PluginSettings {
                 StringSetting {
                     settingKey: "workDir"
                     label: "Working directory"
-                    description: "Where the agent starts, as if you ran claude in a terminal there: it picks up that folder's CLAUDE.md and project settings and can work on its files. The chat and its history then belong to that folder, and changing it starts a new chat. Empty = a private folder (~/.local/state/dms-agent). Accepts ~/path or an absolute path."
+                    description: "Where the agent starts, as if you ran claude in a terminal there: it picks up that folder's CLAUDE.md and project settings and can work on its files. Applied as soon as you press Enter or leave the field: the chat switches to a new conversation with that folder's own history, and a folder chip with its name appears in the chat. Empty = a private folder (~/.local/state/dms-agent). Accepts ~/path or an absolute path."
                     placeholder: "~/projects/my-app"
                     defaultValue: ""
                 }

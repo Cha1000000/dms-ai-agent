@@ -155,6 +155,9 @@ Item {
         var k = op <= 94 ? op / 94 : 1 + (op - 94) / 6 * 0.7;
         return Math.min(0.97, alpha * k);
     }
+    // Text on your own bubbles. On glass the bubble is the accent tinted into a dark
+    // backdrop, so the text that suits a solid accent (dark on a light accent) is lost.
+    readonly property color userBubbleText: glassOn ? AgentTheme.onDark : AgentTheme.primaryText
     function bubbleColor(base, glassAlpha) {
         return Theme.withAlpha(base, glassOn ? glassTint(glassAlpha) : panelAlpha);
     }
@@ -544,6 +547,24 @@ Item {
                                 modelDropdown.visible = false;
                             }
                         }
+                    }
+
+                    // Working directory, only when the setting points somewhere else
+                    Rectangle {
+                        visible: AgentService.customWorkDir !== ""
+                        width: Math.min(folderRow.implicitWidth + 14, 120); height: 26; radius: 13
+                        Layout.preferredWidth: width
+                        color: Theme.withAlpha(AgentTheme.surfaceVariant, 0.3)
+                        Row {
+                            id: folderRow; anchors.centerIn: parent; spacing: 4
+                            DankIcon { name: "folder"; color: AgentTheme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
+                            StyledText {
+                                text: AgentService.customWorkDir.split("/").pop()
+                                width: Math.min(implicitWidth, 80)
+                                font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                        TipArea { text: AgentService.tr("tip.workDir") + ": " + AgentService.customWorkDir }
                     }
 
                     // New chat
@@ -1000,10 +1021,10 @@ Item {
 
                     Rectangle {
                         width: 92; height: 30; radius: 15
-                        color: deleteBtnArea.containsMouse ? (AgentTheme.danger) : Theme.withAlpha(AgentTheme.danger, 0.8)
+                        color: deleteBtnArea.containsMouse ? AgentTheme.primary : Theme.withAlpha(AgentTheme.primary, 0.8)
                         StyledText {
                             anchors.centerIn: parent; text: AgentService.tr("confirm.delete")
-                            font.pixelSize: Theme.fontSizeSmall; font.weight: Font.Bold; color: AgentTheme.onDark
+                            font.pixelSize: Theme.fontSizeSmall; font.weight: Font.Bold; color: AgentTheme.primaryText
                         }
                         MouseArea {
                             id: deleteBtnArea
@@ -1277,13 +1298,13 @@ Item {
                     bottomPadding: 0
                     text: content
                     wrapMode: TextEdit.Wrap
-                    color: AgentTheme.primaryText
+                    color: chatRoot.userBubbleText
                     font.pixelSize: AgentService.bubbleFontSize
                     readOnly: true
                     selectByMouse: true
                     persistentSelection: true
-                    selectionColor: Theme.withAlpha(AgentTheme.primaryText, 0.3)
-                    selectedTextColor: AgentTheme.primaryText
+                    selectionColor: Theme.withAlpha(chatRoot.userBubbleText, 0.3)
+                    selectedTextColor: chatRoot.userBubbleText
 
                     Keys.onEscapePressed: function(event) {
                         event.accepted = true;
@@ -1301,7 +1322,7 @@ Item {
 
                     label: AgentService.tr("bubble.copyText")
                     fg: AgentTheme.primary
-                    bg: AgentTheme.primaryText
+                    bg: chatRoot.userBubbleText
                     copiedColor: AgentTheme.primary
                     onRequested: chatRoot.copyToClipboard(content)
                 }
@@ -1426,6 +1447,12 @@ Item {
             if (m.role === "tool" || m.role === "tool_result") continue;
             messageModel.append({ msgRole: m.role, msgContent: m.content || "", msgTimestamp: m.timestamp || 0 });
         }
+    }
+
+    // The directory switch empties the service's conversation; the feed follows.
+    Connections {
+        target: AgentService
+        function onCustomWorkDirChanged() { chatRoot.reloadMessages(); AgentService.clearAttachments(false); }
     }
 
     function reloadMessages() {
