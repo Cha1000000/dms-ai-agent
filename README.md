@@ -102,6 +102,7 @@ Then, in DMS:
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
 | Microphone | System default | dropdown of the capture devices PipeWire knows, under the names the audio settings show |
 | Language | `auto` | speech recognition **and** interface language; a fixed code is also more accurate for short phrases |
+| Warm up on open | off | load the speech model whenever the chat opens (~900 MB while it is open) so the first dictation is not clipped |
 | Whisper venv | installer's | path to a venv with `faster-whisper` |
 
 ### Hotkey
@@ -127,7 +128,9 @@ continue as long as needed.
 
 Speech is recognized locally by [faster-whisper](https://github.com/SYSTRAN/faster-whisper). The
 model is loaded by a small background server on first use and unloaded after 10 idle minutes, so
-the first phrase takes a couple of seconds and the next ones are near-instant. Logs:
+the first phrase takes a couple of seconds and the next ones are near-instant. Turn on
+**Warm up on open** in the settings to load the model whenever the chat opens instead (and stop it
+when the chat closes). Logs:
 `$XDG_RUNTIME_DIR/dms-agent-voice.log`.
 
 ### Transcribing what you hear

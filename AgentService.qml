@@ -304,7 +304,7 @@ Singleton {
             + " DMS_AGENT_WHISPER_IDLE=7200 ";
         
         // Записываем 1 секунду, затем транскрибируем и удаляем
-        runQuietExit("timeout 1s " + cmd.join(" ") + " 2>/dev/null; "
+        runQuietExit("timeout 1s " + cmd.map(shellQuote).join(" ") + " 2>/dev/null; "
             + env + "python3 " + shellQuote(voiceScript) + " transcribe " + shellQuote(warmupPath) + " >/dev/null 2>&1; "
             + "rm -f " + shellQuote(warmupPath), function() {
             voiceWarmupInProgress = false;
