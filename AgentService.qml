@@ -458,7 +458,7 @@ Singleton {
     // Checked once per boot: the marker lives in the runtime dir, which is wiped
     // on reboot but survives a shell restart — otherwise updating would restart
     // the shell, which would check again, which would...
-    property bool autoUpdate: true
+    property bool autoUpdate: false
 
     readonly property string updateScript: decodeURIComponent(String(Qt.resolvedUrl("update.sh")).replace(/^file:\/\//, ""))
     readonly property string updateMarker: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/dms-agent-update-checked"

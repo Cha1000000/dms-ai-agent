@@ -98,7 +98,7 @@ Then, in DMS:
 | Message Text Size | `13px` | font size in the chat bubbles, 11–22; also `Ctrl` + wheel or `Ctrl` + `+` / `-` in the chat, `Ctrl+0` resets |
 | Chat Height | `75%` | how much of the monitor's height the chat window takes, 40–95 |
 | Liquid Glass | off | translucent bubbles with a highlighted edge and the background blurred behind each one; replaces Background Transparency while on; needs Blur enabled in DMS (otherwise the bubbles stay solid). Lniri draws a glass lens per bubble with a `dms:agent` layer-rule |
-| Auto-update | on | update from this repository once per boot and restart the shell to apply it |
+| Auto-update | off | update from this repository once per boot and restart the shell to apply it |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
 | Microphone | System default | dropdown of the capture devices PipeWire knows, under the names the audio settings show |
 | Language | `auto` | speech recognition **and** interface language; a fixed code is also more accurate for short phrases |
@@ -212,12 +212,12 @@ monitor). The chat window needs keyboard focus for Ctrl to register, which it no
 Use **Update** in DMS (Settings → Plugins) or re-run `install.sh`. DMS updates plugins with
 `git pull`, and this repository only ever moves forward, so updates are plain fast-forwards.
 
-**Auto-update** is on by default: once per boot the plugin fast-forwards itself to
-whatever is in this repository and restarts the shell to apply it, with a notification
-so nothing looks frozen. It never touches a working copy with local edits or local
-commits — those are left exactly as they are and the update is skipped. Turn it off
-in the plugin settings if you would rather update by hand; be aware that leaving it on
-means code from this repository is applied without asking.
+**Auto-update** is off by default. When you turn it on in the plugin settings, once per
+boot the plugin fast-forwards itself to whatever is in this repository and restarts the
+shell to apply it, with a notification so nothing looks frozen. It never touches a working copy with local edits or local
+commits — those are left exactly as they are and the update is skipped. Leave it
+off to update by hand through DMS; be aware that turning it on means code from this
+repository is applied without asking.
 
 The very first update after installing a version older than this one still has to be
 done by hand — a plugin cannot update itself with code it does not yet have. Everything
