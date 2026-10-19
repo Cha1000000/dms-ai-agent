@@ -245,6 +245,13 @@ PluginSettings {
                     options: micOptions
                 }
 
+                ToggleSetting {
+                    settingKey: "voiceWarmup"
+                    label: "Warm up on open"
+                    description: "Load the speech model whenever the chat opens (about 900 MB of memory while it is open), so the first dictation is not clipped. Leave off if you do not dictate."
+                    defaultValue: false
+                }
+
                 StringSetting {
                     settingKey: "voiceVenv"
                     label: "Whisper venv"

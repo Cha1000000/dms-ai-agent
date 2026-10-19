@@ -181,6 +181,8 @@ Singleton {
     property string voiceSource: "mic"
     // Empty means "whatever the system picked"; otherwise a PipeWire source name.
     property string voiceDevice: ""
+    // Loads the speech model when the chat opens, so the first dictation is not clipped.
+    property bool voiceWarmup: false
 
     readonly property string voiceScript: decodeURIComponent(String(Qt.resolvedUrl("voice.py")).replace(/^file:\/\//, ""))
     readonly property string keybindScript: decodeURIComponent(String(Qt.resolvedUrl("keybind.sh")).replace(/^file:\/\//, ""))
@@ -311,7 +313,7 @@ Singleton {
 
     function stopWhisperServer() {
         // Останавливаем Whisper-сервер при закрытии окна чата для освобождения памяти (~900 МБ).
-        // Сервер запускается заново при следующем открытии чата (через warmupVoice).
+        // Сервер поднимается заново при следующей диктовке или прогреве (voiceWarmup).
         runQuietExit("pkill -f 'python.*voice\\.py serve' 2>/dev/null", function() {});
     }
 

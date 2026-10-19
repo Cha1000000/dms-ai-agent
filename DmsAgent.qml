@@ -113,6 +113,7 @@ PluginComponent {
         AgentService.voiceLanguage = pluginData.voiceLanguage || "auto";
         AgentService.voiceVenv = pluginData.voiceVenv || "";
         AgentService.voiceDevice = pluginData.voiceDevice || "";
+        AgentService.voiceWarmup = pluginData.voiceWarmup === true;
         AgentService.autoUpdate = pluginData.autoUpdate === true;
         AgentService.checkForUpdates();
         if (pluginData.hotkey !== undefined) AgentService.applyHotkey(pluginData.hotkey);
@@ -129,8 +130,7 @@ PluginComponent {
             agentChat.reloadMessages();
             visible = true; isVisible = true; AgentService.setPanelVisible(root.screenName, true);
             animScale = 1.0; animOpacity = 1.0;
-            // Прогрев Whisper-модели при каждом открытии чата
-            AgentService.warmupVoice();
+            if (AgentService.voiceWarmup) AgentService.warmupVoice();
         }
         function hide() {
             // Closing the chat mid-dictation drops the recording.
