@@ -327,6 +327,8 @@ Item {
 
         // A shadow under a translucent card would darken what the glass shows.
         layer.enabled: !chatRoot.glassOn
+        layer.smooth: true
+        layer.textureSize: Qt.size(width * Math.max(1, AgentService.uiScale / 100), height * Math.max(1, AgentService.uiScale / 100))
         layer.effect: MultiEffect {
             shadowEnabled: true; shadowBlur: 0.8
             shadowVerticalOffset: -2; shadowColor: Theme.withAlpha(AgentTheme.shadow, 0.4)

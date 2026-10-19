@@ -103,6 +103,7 @@ PluginComponent {
         AgentService.panelHeightPercent = parseInt(pluginData.panelHeightPercent) || 75;
         AgentService.backgroundOpacity = parseInt(pluginData.backgroundOpacity) || 100;
         AgentService.liquidGlass = pluginData.liquidGlass === true;
+        AgentService.uiScale = Math.max(80, Math.min(125, parseInt(pluginData.uiScale) || 100));
         // The old "Extended Thinking" toggle did nothing but change the status text;
         // whoever had it on gets "high".
         // "" is a real choice (Auto), so only a missing key falls back.
@@ -158,7 +159,8 @@ PluginComponent {
         // be dragged smoothly (moving a layer-shell window means a round trip to
         // the compositor per step). Only the chat itself takes input: everything
         // else is masked out and clicks go through to the windows underneath.
-        readonly property real chatWidth: 660
+        readonly property real ui: AgentService.uiScale / 100
+        readonly property real chatWidth: 660 * ui
         readonly property real chatFraction: AgentService.panelFractionFor(root.screenName)
         anchors.bottom: true
         anchors.left: true
@@ -225,7 +227,8 @@ PluginComponent {
         // отступа снизу; на маленьком экране не должна упереться в бар.
         implicitHeight: {
             var available = (screen ? screen.height : 1080) - WlrLayershell.margins.bottom - 48;
-            return Math.max(420, Math.round(available * AgentService.panelHeightPercent / 100));
+            var base = Math.max(420, Math.round(available * AgentService.panelHeightPercent / 100));
+            return Math.min(available, Math.round(base * ui));
         }
 
         Item {
@@ -249,24 +252,34 @@ PluginComponent {
                 opacity: agentPanel.animOpacity * (agentPanel.dragOutside ? 0.55 : 1)
                 transformOrigin: Item.Bottom
 
-                DmsAgentChat {
-                    id: agentChat
-                    active: agentPanel.isVisible
-                    screenName: root.screenName
-                    anchors.fill: parent
-                    onEscapePressed: agentPanel.hide()
-                    onDragStarted: function(px, py) {
-                        agentPanel.dragGrab = px - slot.x;
-                        agentPanel.dragX = slot.x;
-                        agentPanel.dragging = true;
+                // The chat is laid out at its natural size and zoomed as a whole, so every
+                // font, radius and gap follows the scale.
+                Item {
+                    id: scaler
+                    width: parent.width / agentPanel.ui
+                    height: parent.height / agentPanel.ui
+                    scale: agentPanel.ui
+                    transformOrigin: Item.TopLeft
+
+                    DmsAgentChat {
+                        id: agentChat
+                        active: agentPanel.isVisible
+                        screenName: root.screenName
+                        anchors.fill: parent
+                        onEscapePressed: agentPanel.hide()
+                        onDragStarted: function(px, py) {
+                            agentPanel.dragGrab = px - slot.x;
+                            agentPanel.dragX = slot.x;
+                            agentPanel.dragging = true;
+                        }
+                        onDragMoved: function(px, py) {
+                            if (!agentPanel.dragging) return;
+                            agentPanel.dragX = agentPanel.clampX(px - agentPanel.dragGrab, agentPanel.width);
+                            var over = agentPanel.screenAt(px, py);
+                            agentPanel.dragOutside = !over || over.name !== root.screenName;
+                        }
+                        onDragFinished: function(px, py) { agentPanel.finishDrag(px, py); }
                     }
-                    onDragMoved: function(px, py) {
-                        if (!agentPanel.dragging) return;
-                        agentPanel.dragX = agentPanel.clampX(px - agentPanel.dragGrab, agentPanel.width);
-                        var over = agentPanel.screenAt(px, py);
-                        agentPanel.dragOutside = !over || over.name !== root.screenName;
-                    }
-                    onDragFinished: function(px, py) { agentPanel.finishDrag(px, py); }
                 }
             }
         }
@@ -281,7 +294,7 @@ PluginComponent {
                 targetWindow: agentPanel
                 chat: agentChat
                 shown: agentPanel.isVisible
-                lensScale: agentPanel.animScale
+                lensScale: agentPanel.animScale * agentPanel.ui
             }
         }
         Connections {
