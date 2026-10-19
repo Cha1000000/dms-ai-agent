@@ -35,6 +35,11 @@ PluginSettings {
         Component.onCompleted: Qt.callLater(loadValue)
     }
 
+    // SelectionSetting reads synchronously too and shows its default after reopening.
+    component SavedSelection: SelectionSetting {
+        Component.onCompleted: Qt.callLater(loadValue)
+    }
+
     // Properties of a node are only populated while something holds it.
     PwObjectTracker { objects: root.micNodes }
 
@@ -87,7 +92,7 @@ PluginSettings {
                     defaultValue: ""
                 }
 
-                SelectionSetting {
+                SavedSelection {
                     settingKey: "permissionMode"
                     label: "Permissions"
                     description: "Ask first: the chat shows an Allow / Deny dialog before the agent runs a command or changes a file. No confirmation: the agent acts immediately (Claude Code runs with --dangerously-skip-permissions, unrestricted shell access as you)."
@@ -144,7 +149,7 @@ PluginSettings {
                     color: Theme.surfaceText
                 }
 
-                SelectionSetting {
+                SavedSelection {
                     settingKey: "themePreset"
                     label: "Theme"
                     description: "Jarvis is the signature look: your DMS colors with a neon gradient rim. DMS Colors is the same without the neon."
@@ -333,7 +338,7 @@ PluginSettings {
                     color: Theme.surfaceText
                 }
 
-                SelectionSetting {
+                SavedSelection {
                     settingKey: "voiceModel"
                     label: "Whisper Model"
                     description: "Auto: large-v3-turbo with an NVIDIA GPU, small on CPU. Downloaded on first use."
@@ -355,7 +360,7 @@ PluginSettings {
                     defaultValue: "auto"
                 }
 
-                SelectionSetting {
+                SavedSelection {
                     settingKey: "voiceDevice"
                     label: "Microphone"
                     description: "Which microphone dictation records from. The stored value is the PipeWire node name, so it survives renaming the list."

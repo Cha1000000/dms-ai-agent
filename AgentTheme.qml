@@ -25,7 +25,7 @@ Singleton {
             surface: "#140607", surfaceContainer: "#1c0a0c", surfaceContainerHighest: "#2a1013",
             surfaceVariant: "#2e1215", surfaceText: "#f2e6e6", surfaceVariantText: "#b59a9c",
             outlineVariant: "#5a2a2e",
-            neon0: "#ff3b3b", neon1: "#b8101a", neon2: "#ff6a3d", neon3: "#ffb347"
+            neon0: "#ff2a2a", neon1: "#e0102a", neon2: "#ff2a55", neon3: "#b5083a"
         },
         dark: {
             neon: false,
