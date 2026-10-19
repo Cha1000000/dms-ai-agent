@@ -1017,11 +1017,17 @@ Item {
         z: 41
 
         // Enter allows, Esc denies; focus goes back to the input when the dialog closes.
+        // Keys are ignored for a moment after a request appears (and between queued
+        // requests), so an Enter typed for the input cannot approve something unseen.
         focus: visible
+        property bool armed: false
+        property var shownRequest: AgentService.pendingPermission
+        onShownRequestChanged: { armed = false; armTimer.restart(); }
+        Timer { id: armTimer; interval: 700; onTriggered: permissionDialog.armed = true }
         onVisibleChanged: { if (visible) forceActiveFocus(); else inputField.forceActiveFocus(); }
-        Keys.onReturnPressed: AgentService.respondPermission(true)
-        Keys.onEnterPressed: AgentService.respondPermission(true)
-        Keys.onEscapePressed: AgentService.respondPermission(false)
+        Keys.onReturnPressed: if (armed) AgentService.respondPermission(true)
+        Keys.onEnterPressed: if (armed) AgentService.respondPermission(true)
+        Keys.onEscapePressed: if (armed) AgentService.respondPermission(false)
 
         MouseArea { anchors.fill: parent; hoverEnabled: true }
 
@@ -1051,17 +1057,22 @@ Item {
 
                 Rectangle {
                     width: parent.width
-                    height: Math.min(permText.implicitHeight + 16, 160)
+                    height: Math.min(permText.implicitHeight + 16, 260)
                     radius: 8
                     color: Theme.withAlpha(Theme.surfaceVariant, 0.25)
                     clip: true
-                    Text {
-                        id: permText
-                        x: 8; y: 8; width: parent.width - 16
-                        text: AgentService.pendingPermission ? AgentService.pendingPermission.text : ""
-                        wrapMode: Text.WrapAnywhere
-                        color: Theme.surfaceText
-                        font.pixelSize: 11; font.family: "monospace"
+                    Flickable {
+                        anchors.fill: parent
+                        contentHeight: permText.implicitHeight + 16
+                        boundsBehavior: Flickable.StopAtBounds
+                        Text {
+                            id: permText
+                            x: 8; y: 8; width: parent.width - 16
+                            text: AgentService.pendingPermission ? AgentService.pendingPermission.text : ""
+                            wrapMode: Text.WrapAnywhere
+                            color: Theme.surfaceText
+                            font.pixelSize: 11; font.family: "monospace"
+                        }
                     }
                 }
 

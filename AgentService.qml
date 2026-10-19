@@ -783,18 +783,36 @@ Singleton {
     property bool _gotResult: false
     property string _lastText: ""
     property var _toolNames: ({})
-    // The tool call the agent is waiting on in confirm mode: { requestId, text }.
-    property var pendingPermission: null
+    // Tool calls the agent is waiting on in confirm mode, oldest first (it may ask for several
+    // at once): { requestId, input, text }. The first one is shown; the rest wait their turn.
+    property var permissionQueue: []
+    readonly property var pendingPermission: permissionQueue.length > 0 ? permissionQueue[0] : null
+
+    function _sendControl(proc, requestId, subtype, response) {
+        var body = subtype === "success" ? { subtype: "success", request_id: requestId, response: response }
+                                         : { subtype: "error", request_id: requestId, error: response };
+        proc.write(JSON.stringify({ type: "control_response", response: body }) + "\n");
+    }
 
     function respondPermission(allow) {
         var p = pendingPermission, proc = _claudeProcess;
-        if (!p || !proc) { pendingPermission = null; return; }
-        pendingPermission = null;
-        statusText = tr(activeEffort !== "" ? "status.thinking" : "status.processing");
-        var response = allow ? { behavior: "allow", updatedInput: p.input }
-                             : { behavior: "deny", message: "The user denied this action." };
-        proc.write(JSON.stringify({ type: "control_response", response: {
-            subtype: "success", request_id: p.requestId, response: response } }) + "\n");
+        if (!p) return;
+        permissionQueue = permissionQueue.slice(1);
+        if (!proc) return;
+        if (permissionQueue.length === 0)
+            statusText = tr(activeEffort !== "" ? "status.thinking" : "status.processing");
+        _sendControl(proc, p.requestId, "success", allow ? { behavior: "allow", updatedInput: p.input }
+                                                         : { behavior: "deny", message: "The user denied this action." });
+    }
+
+    // What the dialog shows: everything that will run, not the one-line summary of the chat.
+    function permissionText(name, input) {
+        var inp = input || {};
+        var body = inp.command || inp.content || inp.new_string || "";
+        var head = name + (inp.file_path ? ": " + inp.file_path : "");
+        var text = body ? head + "\n" + body : (inp.file_path ? head : name + "\n" + JSON.stringify(inp, null, 1));
+        if (homeDir) text = text.split(homeDir).join("~");
+        return text.length > 4000 ? text.substring(0, 4000) + "\n…" : text;
     }
 
     Component {
@@ -828,14 +846,14 @@ Singleton {
         onTriggered: {
             if (root._claudeProcess && !root._gotResult) {
                 root._claudeProcess = null;
-                root.pendingPermission = null;
+                root.permissionQueue = [];
                 root.finishResponse(root._lastText || "(error: agent exited without a response)");
             }
         }
     }
 
     function cancelRequest() {
-        pendingPermission = null;
+        permissionQueue = [];
         if (_claudeProcess) {
             _claudeProcess.signal(15);
             _claudeProcess = null;
@@ -880,11 +898,17 @@ Singleton {
         if (ev.type === "control_request") {
             var req = ev.request || {};
             if (req.subtype === "can_use_tool") {
-                var text = describeTool(req.tool_name, req.input);
-                pendingPermission = { requestId: ev.request_id, input: req.input || {}, text: text };
+                var queue = permissionQueue.slice();
+                queue.push({ requestId: ev.request_id, input: req.input || {},
+                             text: permissionText(req.tool_name, req.input) });
+                permissionQueue = queue;
                 statusText = tr("status.awaiting");
-                notifyIfHidden(tr("permission.notify") + ": " + text);
+                notifyIfHidden(tr("permission.notify") + ": " + describeTool(req.tool_name, req.input));
+            } else if (_claudeProcess) {
+                _sendControl(_claudeProcess, ev.request_id, "error", "Unsupported request: " + req.subtype);
             }
+        } else if (ev.type === "control_cancel_request") {
+            permissionQueue = permissionQueue.filter(function(p) { return p.requestId !== ev.request_id; });
         } else if (ev.type === "assistant") {
             for (var i = 0; i < content.length; i++) {
                 var block = content[i];
@@ -916,7 +940,7 @@ Singleton {
             // Closing stdin lets a confirm-mode agent (which waits for further messages) exit.
             if (_claudeProcess) _claudeProcess.stdinEnabled = false;
             _claudeProcess = null;
-            pendingPermission = null;
+            permissionQueue = [];
             handleResult(ev);
         }
     }
