@@ -474,31 +474,44 @@ Item {
                     TipArea { text: AgentService.tr("tip.attach") }
                 }
 
-                TextEdit {
+                DankTextEdit {
                     id: inputField
                     anchors.fill: parent
-                    anchors.leftMargin: 46; anchors.rightMargin: 18
-                    anchors.topMargin: 12; anchors.bottomMargin: 12
-                    color: AgentTheme.surfaceText; font.pixelSize: Theme.fontSizeMedium
-                    wrapMode: TextEdit.Wrap; clip: true
+                    anchors.leftMargin: 46 - Theme.spacingM; anchors.rightMargin: 18 - Theme.spacingM
+                    topPadding: 12; bottomPadding: 12
+                    backgroundColor: "transparent"
+                    normalBorderColor: "transparent"; focusedBorderColor: "transparent"
+                    borderWidth: 0; focusedBorderWidth: 0
+                    textColor: AgentTheme.surfaceText
+                    placeholderColor: AgentTheme.surfaceVariantText
+                    placeholderText: AgentService.tr("input.placeholder")
+                    font.pixelSize: Theme.fontSizeMedium
+                    keyForwardTargets: [inputKeys]
 
+                    // The card grows with the wrapped text; DankTextEdit does not expose
+                    // its height, so a hidden label with the same width and font measures it.
+                    readonly property real contentHeight: inputMeasure.contentHeight
                     StyledText {
-                        visible: !inputField.text && !inputField.activeFocus
-                        text: AgentService.tr("input.placeholder")
-                        color: AgentTheme.surfaceVariantText; font.pixelSize: Theme.fontSizeMedium
-                        anchors.verticalCenter: parent.verticalCenter
+                        id: inputMeasure
+                        visible: false
+                        x: Theme.spacingM; width: inputField.width - Theme.spacingM * 2
+                        text: inputField.text + "\u200b"
+                        font: inputField.font
+                        wrapMode: Text.Wrap
                     }
 
-                    Keys.onPressed: function(event) { chatRoot.handleZoomKey(event); }
-                    Keys.onReturnPressed: function(event) {
-                        if (event.modifiers & Qt.ShiftModifier) event.accepted = false;
-                        else { event.accepted = true; sendCurrentMessage(); }
-                    }
-
-                    Keys.onEscapePressed: function(event) {
-                        event.accepted = true;
-                        if (AgentService.voiceState === "recording") AgentService.cancelVoice();
-                        else chatRoot.escapePressed();
+                    Item {
+                        id: inputKeys
+                        Keys.onPressed: function(event) { chatRoot.handleZoomKey(event); }
+                        Keys.onReturnPressed: function(event) {
+                            if (event.modifiers & Qt.ShiftModifier) event.accepted = false;
+                            else { event.accepted = true; sendCurrentMessage(); }
+                        }
+                        Keys.onEscapePressed: function(event) {
+                            event.accepted = true;
+                            if (AgentService.voiceState === "recording") AgentService.cancelVoice();
+                            else chatRoot.escapePressed();
+                        }
                     }
                 }
             }
