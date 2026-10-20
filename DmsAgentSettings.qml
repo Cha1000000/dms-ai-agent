@@ -226,6 +226,7 @@ PluginSettings {
                             { key: "surfaceText", label: "Text" },
                             { key: "surfaceVariantText", label: "Muted text and icons" },
                             { key: "outlineVariant", label: "Borders" },
+                            { key: "hoverTint", label: "Hover highlight" },
                             { key: "error", label: "Error (recording, error messages)" },
                             { key: "danger", label: "Delete buttons and delete hovers" },
                             { key: "warning", label: "Warning (tool steps)" },

@@ -24,7 +24,7 @@ Singleton {
             primary: "#b8101a", primaryText: "#ffffff",
             surface: "#140607", surfaceContainer: "#1c0a0c", surfaceContainerHighest: "#2a1013",
             surfaceVariant: "#2e1215", surfaceText: "#f2e6e6", surfaceVariantText: "#b59a9c",
-            outlineVariant: "#5a2a2e", danger: "#e0182d",
+            outlineVariant: "#5a2a2e", danger: "#e0182d", hoverTint: "#8a3036",
             bubbleFrom: "#b8101a", bubbleTo: "#8a0a12",
             neon0: "#ff2a2a", neon1: "#e0102a", neon2: "#ff2a55", neon3: "#b5083a"
         },
@@ -94,6 +94,9 @@ Singleton {
     readonly property color surfaceContainerHighest: pick("surfaceContainerHighest", Theme.surfaceContainerHighest)
     readonly property color surfaceVariant: pick("surfaceVariant", Theme.surfaceVariant)
     readonly property color surfaceText: pick("surfaceText", Theme.surfaceText)
+    // Hover fills; its own role because a surfaceVariant close to the panel color
+    // (as in Umbrella) leaves the hover all but invisible.
+    readonly property color hoverTint: pick("hoverTint", surfaceVariant)
     readonly property color surfaceVariantText: pick("surfaceVariantText", Theme.surfaceVariantText)
     readonly property color outlineVariant: pick("outlineVariant", Theme.outlineVariant)
     readonly property color shadow: pick("shadow", Theme.shadow || "#000000")
@@ -119,7 +122,7 @@ Singleton {
 
     readonly property var roleNames: ["primary", "primaryText", "surface", "surfaceContainer",
         "surfaceContainerHighest", "surfaceVariant", "surfaceText", "surfaceVariantText",
-        "outlineVariant", "error", "warning", "danger", "neon0", "neon1", "neon2", "neon3"]
+        "outlineVariant", "hoverTint", "error", "warning", "danger", "neon0", "neon1", "neon2", "neon3"]
 
     function _hex(v) { return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : ""; }
 
