@@ -617,54 +617,7 @@ Item {
 
                     Item { Layout.fillWidth: true }
 
-                    // Cost
-                    StyledText {
-                        visible: AgentService.lastCost !== ""; text: AgentService.lastCost
-                        font.pixelSize: Theme.fontSizeSmall; color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5)
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    // Send / Status
-                    Row {
-                        spacing: 6
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: AgentService.busy
-
-                        Rectangle {
-                            width: 6; height: 6; radius: height / 2
-                            anchors.verticalCenter: parent.verticalCenter; color: AgentTheme.primary
-                            SequentialAnimation on opacity {
-                                running: AgentService.busy; loops: Animation.Infinite
-                                NumberAnimation { to: 0.2; duration: 600; easing.type: Easing.InOutSine }
-                                NumberAnimation { to: 1.0; duration: 600; easing.type: Easing.InOutSine }
-                            }
-                        }
-
-                        StyledText {
-                            text: AgentService.statusText
-                            color: AgentTheme.surfaceVariantText; font.pixelSize: Theme.fontSizeSmall
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        Rectangle {
-                            width: 22; height: 22; radius: height / 2
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: cancelArea.containsMouse ? Theme.withAlpha(AgentTheme.error, 0.15) : "transparent"
-                            DankIcon { anchors.centerIn: parent; name: "close"; color: AgentTheme.surfaceVariantText; size: 14 }
-                            MouseArea { id: cancelArea; anchors.fill: parent; hoverEnabled: true; onClicked: AgentService.cancelRequest() }
-                            TipArea { text: AgentService.tr("tip.stop") }
-                        }
-                    }
-
-                    // Voice input: error, recording timer, mic button
-                    StyledText {
-                        visible: (AgentService.voiceError !== "" || AgentService.attachError !== "") && !AgentService.busy
-                        text: AgentService.voiceError || AgentService.attachError
-                        color: AgentTheme.error; font.pixelSize: Theme.fontSizeSmall
-                        elide: Text.ElideRight; Layout.maximumWidth: 240
-                        Layout.alignment: Qt.AlignVCenter
-                    }
-
+                    // Voice input: recording timer, mic button
                     StyledText {
                         visible: AgentService.voiceState === "recording"
                         text: Math.floor(AgentService.voiceSeconds / 60) + ":" + ("0" + AgentService.voiceSeconds % 60).slice(-2)
@@ -726,6 +679,50 @@ Item {
                         DankIcon { anchors.centerIn: parent; name: "arrow_upward"; color: parent.canSend ? AgentTheme.primaryText : AgentTheme.surfaceVariantText; size: 18 }
                         MouseArea { anchors.fill: parent; onClicked: if (parent.canSend) sendCurrentMessage() }
                         TipArea { text: AgentService.tr("tip.send") }
+                    }
+                }
+            }
+
+            // Status while the agent works, cost and tokens of the last answer after it;
+            // a line of its own so a long text can never push the toolbar buttons out.
+            Item {
+                id: statusLine
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? 24 : 0
+                readonly property string problem: AgentService.voiceError || AgentService.attachError
+                visible: AgentService.busy || problem !== "" || AgentService.lastCost !== ""
+
+                RowLayout {
+                    anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
+                    anchors.bottomMargin: Theme.spacingXS; spacing: 6
+
+                    Rectangle {
+                        visible: AgentService.busy
+                        width: 6; height: 6; radius: height / 2
+                        Layout.alignment: Qt.AlignVCenter; color: AgentTheme.primary
+                        SequentialAnimation on opacity {
+                            running: AgentService.busy; loops: Animation.Infinite
+                            NumberAnimation { to: 0.2; duration: 600; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 1.0; duration: 600; easing.type: Easing.InOutSine }
+                        }
+                    }
+
+                    StyledText {
+                        text: AgentService.busy ? AgentService.statusText : (statusLine.problem || AgentService.lastCost)
+                        color: AgentService.busy ? AgentTheme.surfaceVariantText : (statusLine.problem !== "" ? AgentTheme.error : Theme.withAlpha(AgentTheme.surfaceVariantText, 0.6))
+                        font.pixelSize: Theme.fontSizeSmall
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true; Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Rectangle {
+                        visible: AgentService.busy
+                        width: 22; height: 22; radius: height / 2
+                        Layout.alignment: Qt.AlignVCenter
+                        color: cancelArea.containsMouse ? Theme.withAlpha(AgentTheme.error, 0.15) : "transparent"
+                        DankIcon { anchors.centerIn: parent; name: "close"; color: AgentTheme.surfaceVariantText; size: 14 }
+                        MouseArea { id: cancelArea; anchors.fill: parent; hoverEnabled: true; onClicked: AgentService.cancelRequest() }
+                        TipArea { text: AgentService.tr("tip.stop") }
                     }
                 }
             }
