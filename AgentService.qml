@@ -320,7 +320,7 @@ Singleton {
     function stopWhisperServer() {
         // Останавливаем Whisper-сервер при закрытии окна чата для освобождения памяти (~900 МБ).
         // Сервер поднимается заново при следующей диктовке или прогреве (voiceWarmup).
-        runQuietExit("pkill -f 'python.*voice\\.py serve' 2>/dev/null", function() {});
+        runQuietExit("python3 " + shellQuote(voiceScript) + " stop", function() {});
     }
 
     function _onRecordingExited() {

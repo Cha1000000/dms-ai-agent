@@ -3,6 +3,7 @@
 
     voice.py transcribe <file.wav>   print {"text": ...} or {"error": ...} as JSON
     voice.py serve                   run the model server (started on demand)
+    voice.py stop                    ask a running server to exit (frees the model memory)
 
 Loading the model takes seconds, so it is kept in a small background server
 that listens on a UNIX socket and exits on its own after IDLE_SECONDS without
@@ -97,6 +98,10 @@ def serve():
                     request = json.loads(conn.makefile("r", encoding="utf-8").readline())
                 except ValueError:
                     request = {}
+                if request.get("quit"):
+                    conn.sendall(b'{"ok": true}\n')
+                    print("stop requested, exiting", file=sys.stderr, flush=True)
+                    return
                 if request.get("model", MODEL) != MODEL:
                     conn.sendall(b'{"restart": true}\n')
                     print("model setting changed, exiting", file=sys.stderr, flush=True)
@@ -142,6 +147,17 @@ def ask_server(path, timeout):
     if reply.get("restart"):
         raise ServerRestarting()
     return reply
+
+
+def stop_server():
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+            conn.settimeout(5)
+            conn.connect(SOCKET_PATH)
+            conn.sendall(b'{"quit": true}\n')
+            conn.makefile("r", encoding="utf-8").readline()
+    except OSError:
+        pass  # not running
 
 
 def start_server():
@@ -192,6 +208,8 @@ if __name__ == "__main__":
     action = sys.argv[1] if len(sys.argv) > 1 else ""
     if action == "serve":
         serve()
+    elif action == "stop":
+        stop_server()
     elif action == "transcribe" and len(sys.argv) > 2:
         try:
             result = transcribe(sys.argv[2])
