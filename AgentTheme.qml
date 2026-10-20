@@ -99,8 +99,8 @@ Singleton {
     readonly property color shadow: pick("shadow", Theme.shadow || "#000000")
     readonly property color error: pick("error", Theme.error || "#EF4444")
     readonly property color warning: pick("warning", Theme.warning || "#FF9800")
-    // Buttons that delete something: an action, not an error, so not tied to the DMS error color.
-    readonly property color danger: pick("danger", "#EF4444")
+    // Buttons that delete something; the dms preset follows the shell's error color.
+    readonly property color danger: pick("danger", Theme.error || "#EF4444")
     // The accent as text or icon on its own faint tint: brighter on dark panels (keeps the saturation), darker on light ones.
     readonly property color accentOnTint: _lum(surfaceContainer) < 0.5 ? Qt.lighter(primary, 1.6) : Qt.darker(primary, 1.25)
     readonly property color onDark: pick("onDark", "#FFFFFF")
