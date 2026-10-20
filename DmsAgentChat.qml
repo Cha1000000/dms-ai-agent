@@ -809,25 +809,25 @@ Item {
 
             Row {
                 width: parent.width; spacing: 6
-                Rectangle {
-                    width: parent.width - 34 - 6; height: 34; radius: 10
-                    color: Theme.withAlpha(AgentTheme.surfaceVariant, 0.3)
-                    border.width: workDirPopup.missing ? 1 : 0; border.color: AgentTheme.error
-                    TextInput {
-                        id: wdInput
-                        anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10
-                        verticalAlignment: TextInput.AlignVCenter
-                        clip: true; selectByMouse: true
-                        color: AgentTheme.surfaceText; selectionColor: AgentTheme.primary; selectedTextColor: AgentTheme.primaryText
-                        font.pixelSize: Theme.fontSizeSmall
-                        onTextEdited: workDirPopup.missing = false
-                        onAccepted: workDirPopup.apply(text)
+                DankTextField {
+                    id: wdInput
+                    width: parent.width - 34 - 6; height: 34
+                    topPadding: 0; bottomPadding: 0
+                    cornerRadius: 10
+                    placeholderText: AgentService.tr("workdir.placeholder")
+                    font.pixelSize: Theme.fontSizeSmall
+                    textColor: AgentTheme.surfaceText
+                    backgroundColor: Theme.withAlpha(AgentTheme.surfaceVariant, 0.3)
+                    placeholderColor: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5)
+                    normalBorderColor: workDirPopup.missing ? AgentTheme.error : "transparent"
+                    focusedBorderColor: workDirPopup.missing ? AgentTheme.error : AgentTheme.primary
+                    focusedBorderWidth: 1
+                    keyForwardTargets: [wdKeys]
+                    onTextEdited: workDirPopup.missing = false
+                    onAccepted: workDirPopup.apply(text)
+                    Item {
+                        id: wdKeys
                         Keys.onEscapePressed: function(event) { event.accepted = true; workDirPopup.close(); }
-                        StyledText {
-                            anchors.fill: parent; visible: wdInput.text === ""
-                            text: AgentService.tr("workdir.placeholder")
-                            font.pixelSize: Theme.fontSizeSmall; color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5)
-                        }
                     }
                 }
                 Rectangle {
@@ -969,16 +969,26 @@ Item {
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 8; spacing: 8
                     StyledText { visible: !historyRow.editing; text: modelData.title || "Chat"; font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceText; elide: Text.ElideRight; Layout.fillWidth: true }
-                    TextInput {
+                    DankTextField {
                         id: renameInput
                         visible: historyRow.editing
-                        Layout.fillWidth: true
-                        font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceText
-                        selectionColor: AgentTheme.primary; selectedTextColor: AgentTheme.primaryText
-                        clip: true; maximumLength: 100
+                        Layout.fillWidth: true; Layout.preferredHeight: 28
+                        topPadding: 0; bottomPadding: 0
+                        cornerRadius: 8
+                        font.pixelSize: Theme.fontSizeSmall
+                        textColor: AgentTheme.surfaceText
+                        backgroundColor: Theme.withAlpha(AgentTheme.surfaceVariant, 0.3)
+                        normalBorderColor: "transparent"
+                        focusedBorderColor: AgentTheme.primary
+                        focusedBorderWidth: 1
+                        maximumLength: 100
+                        keyForwardTargets: [renameKeys]
                         onAccepted: historyRow.finishEdit(true)
-                        onActiveFocusChanged: if (!activeFocus) historyRow.finishEdit(false)
-                        Keys.onEscapePressed: historyRow.finishEdit(false)
+                        onFocusStateChanged: function(hasFocus) { if (!hasFocus) historyRow.finishEdit(false); }
+                        Item {
+                            id: renameKeys
+                            Keys.onEscapePressed: historyRow.finishEdit(false)
+                        }
                     }
                     StyledText {
                         text: { var d = new Date(modelData.date); return d.toLocaleDateString(undefined, {month:"short", day:"numeric"}) }
