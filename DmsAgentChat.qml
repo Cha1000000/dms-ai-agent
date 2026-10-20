@@ -961,7 +961,7 @@ Item {
             }
         }
 
-        ListView {
+        DankListView {
             anchors.fill: parent; anchors.margins: Theme.spacingXS; anchors.topMargin: 34; clip: true; spacing: 0
             visible: AgentService.history.length > 0
             model: AgentService.history
@@ -1215,7 +1215,7 @@ Item {
                     radius: Theme.cornerRadius - Theme.spacingXS
                     color: Theme.withAlpha(AgentTheme.surfaceVariant, 0.25)
                     clip: true
-                    Flickable {
+                    DankFlickable {
                         anchors.fill: parent
                         contentHeight: permText.implicitHeight + 16
                         boundsBehavior: Flickable.StopAtBounds
@@ -1270,7 +1270,7 @@ Item {
 
 
     // --- Messages container (fills space above input) ---
-    Flickable {
+    DankFlickable {
         id: messageFlick
         anchors.top: parent.top
         anchors.bottom: inputCard.top
