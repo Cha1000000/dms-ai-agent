@@ -121,7 +121,9 @@ Item {
 
         anchors.fill: parent
 
-        HoverHandler { id: tipHover }
+        // On the button itself: a handler on this overlay item would take the hover
+        // from the button's MouseArea underneath, and the button would never light up.
+        HoverHandler { id: tipHover; parent: tip.parent }
 
         Timer {
             id: tipTimer
