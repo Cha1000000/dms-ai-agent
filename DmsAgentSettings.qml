@@ -160,11 +160,11 @@ PluginSettings {
                 SavedSelection {
                     settingKey: "themePreset"
                     label: "Theme"
-                    description: "Jarvis is the signature look: DMS surfaces with a blue neon accent and gradient rim. DMS Colors uses your DMS accent, without the neon."
-                    defaultValue: "jarvis"
+                    description: "DMS Colors follows your DMS theme. Neon keeps the DMS surfaces but uses a blue neon accent and a gradient rim."
+                    defaultValue: "dms"
                     options: [
-                        { label: "Jarvis (neon)", value: "jarvis" },
                         { label: "DMS Colors", value: "dms" },
+                        { label: "Neon", value: "neon" },
                         { label: "Umbrella (red neon)", value: "umbrella" },
                         { label: "Dark neutral", value: "dark" },
                         { label: "Light", value: "light" }

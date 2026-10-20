@@ -10,15 +10,15 @@ import qs.Common
 Singleton {
     id: root
 
-    property string preset: "jarvis"
+    property string preset: "dms"
     // Key colors: { accent, panel, text, outline, neonFrom, neonTo }; absent = not set.
     property var custom: ({})
     // Per-role overrides of the advanced editor: { role: "#rrggbb" }.
     property var advanced: ({})
 
     readonly property var presets: ({
-        jarvis: { neon: true, primary: "#4F7BFF", primaryText: "#ffffff" },
         dms: { neon: false },
+        neon: { neon: true, primary: "#4F7BFF", primaryText: "#ffffff" },
         umbrella: {
             neon: true,
             primary: "#b8101a", primaryText: "#ffffff",
@@ -43,9 +43,9 @@ Singleton {
             outlineVariant: "#c4c4ce", danger: "#d32f2f"
         }
     })
-    readonly property var presetIds: ["jarvis", "dms", "umbrella", "dark", "light"]
+    readonly property var presetIds: ["dms", "neon", "umbrella", "dark", "light"]
 
-    readonly property var _preset: presets[preset] || presets.jarvis
+    readonly property var _preset: presets[preset] || presets.dms
 
     // The key colors stand for several roles each; the rest of a role group is derived so
     // that a light or dark choice stays readable.
@@ -125,7 +125,9 @@ Singleton {
 
     // Colors are only read while their switch is on, so turning one off falls back to the theme.
     function apply(data) {
-        preset = presets[data.themePreset] ? data.themePreset : "jarvis";
+        // "jarvis" is the old id of the neon theme.
+        var id = data.themePreset === "jarvis" ? "neon" : data.themePreset;
+        preset = presets[id] ? id : "dms";
         var c = {};
         if (data.themeCustomOn === true) {
             var keys = ["accent", "panel", "text", "outline", "neonFrom", "neonTo"];
