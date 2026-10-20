@@ -688,13 +688,13 @@ Item {
             Item {
                 id: statusLine
                 Layout.fillWidth: true
-                Layout.preferredHeight: visible ? 24 : 0
+                Layout.preferredHeight: visible ? 32 : 0
                 readonly property string problem: AgentService.voiceError || AgentService.attachError
                 visible: AgentService.busy || problem !== "" || AgentService.lastCost !== ""
 
                 RowLayout {
-                    anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
-                    anchors.bottomMargin: Theme.spacingXS; spacing: 6
+                    anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 18
+                    anchors.topMargin: 2; anchors.bottomMargin: Theme.spacingS + 2; spacing: 6
 
                     Rectangle {
                         visible: AgentService.busy
