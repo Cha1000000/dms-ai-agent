@@ -89,7 +89,7 @@ PluginComponent {
         // Both monitors' instances get the signal; the second one finds the value
         // already stored and skips the write.
         function onSettingChosen(key, value) {
-            if (!root.pluginService || root.pluginData[key] === value) return;
+            if (!root.pluginService || JSON.stringify(root.pluginData[key]) === JSON.stringify(value)) return;
             root.pluginService.savePluginData(root.pluginId, key, value);
         }
     }
@@ -115,6 +115,10 @@ PluginComponent {
         AgentService.voiceVenv = pluginData.voiceVenv || "";
         AgentService.voiceDevice = pluginData.voiceDevice || "";
         AgentService.voiceWarmup = pluginData.voiceWarmup === true;
+        var recent = Array.isArray(pluginData.recentWorkDirs) ? pluginData.recentWorkDirs : [];
+        // A directory chosen before the list existed still belongs in it.
+        if (pluginData.workDir && recent.indexOf(pluginData.workDir) < 0) recent = [pluginData.workDir].concat(recent);
+        AgentService.recentWorkDirs = recent;
         AgentService.setWorkDir(pluginData.workDir || "");
         AgentService.permissionMode = pluginData.permissionMode === "auto" ? "auto" : "confirm";
         AgentTheme.apply(pluginData);

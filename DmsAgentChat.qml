@@ -852,6 +852,43 @@ Item {
                 }
             }
 
+            Column {
+                id: recentCol
+                width: parent.width; spacing: 2
+                visible: AgentService.recentWorkDirs.length > 0
+
+                StyledText { text: AgentService.tr("workdir.recent"); font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceVariantText }
+
+                Repeater {
+                    model: AgentService.recentWorkDirs
+                    delegate: Rectangle {
+                        id: recentRow
+                        width: recentCol.width; height: 30; radius: Theme.cornerRadius - Theme.spacingXS
+                        color: recentArea.containsMouse ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.3)
+                            : (modelData === AgentService.customWorkDir ? Theme.withAlpha(AgentTheme.primary, 0.12) : "transparent")
+                        MouseArea { id: recentArea; anchors.fill: parent; hoverEnabled: true; onClicked: { wdInput.text = modelData; workDirPopup.apply(modelData); } }
+                        RowLayout {
+                            anchors.fill: parent; anchors.leftMargin: Theme.spacingS; anchors.rightMargin: Theme.spacingXS; spacing: Theme.spacingS
+                            DankIcon { name: "folder"; size: 16; color: modelData === AgentService.customWorkDir ? AgentTheme.primary : AgentTheme.surfaceVariantText }
+                            StyledText {
+                                text: modelData.indexOf(AgentService.homeDir + "/") === 0 ? "~" + modelData.substring(AgentService.homeDir.length) : modelData
+                                font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceText
+                                elide: Text.ElideLeft; Layout.fillWidth: true
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 22; Layout.preferredHeight: 22; radius: height / 2
+                                // Same look as the delete button of the history list.
+                                color: forgetArea.containsMouse ? Theme.withAlpha(AgentTheme.danger, 0.2) : "transparent"
+                                opacity: forgetArea.containsMouse ? 1 : (recentArea.containsMouse ? 0.9 : 0.45)
+                                DankIcon { anchors.centerIn: parent; name: "close"; size: 12; color: forgetArea.containsMouse ? AgentTheme.danger : AgentTheme.surfaceVariantText }
+                                MouseArea { id: forgetArea; anchors.fill: parent; hoverEnabled: true; onClicked: AgentService.forgetWorkDir(modelData) }
+                                TipArea { text: AgentService.tr("workdir.forget") }
+                            }
+                        }
+                    }
+                }
+            }
+
             StyledText {
                 visible: workDirPopup.missing; text: AgentService.tr("workdir.missing")
                 font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.error

@@ -106,7 +106,7 @@ Then, in DMS:
 | Window Scale | `100%` | zooms the whole chat window (text, buttons, corners, spacing), 80–125%; Message Text Size is applied on top |
 | Custom colors | off | overrides the key colors of the chosen theme: accent, panel and bubbles, text, borders, and the two ends of the neon gradient |
 | Advanced: edit every color | off | one color per role of the theme; wins over the key colors. Turn a switch off to go back to the theme |
-| Working directory | empty | where the agent starts, like `claude` run in a terminal there (that folder's `CLAUDE.md` and project settings apply). Empty = a private folder, `~/.local/state/dms-agent`. Each folder has its own chats and history; changing it starts a new chat |
+| Working directory | empty | where the agent starts, like `claude` run in a terminal there (that folder's `CLAUDE.md` and project settings apply). Empty = a private folder, `~/.local/state/dms-agent`. Each folder has its own chats and history; changing it starts a new chat. The folder button in the chat also lists the last 8 folders you applied, one click switches to one |
 | Permissions | Ask first | *Ask first*: Allow / Deny dialog before each command or file change; *No confirmation*: runs everything immediately (`--dangerously-skip-permissions`) |
 | Update notice | off | once per boot, check this repository and notify when a newer version exists; installs nothing |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |

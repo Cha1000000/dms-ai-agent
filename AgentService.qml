@@ -585,6 +585,9 @@ Singleton {
     // any other directory, e.g. a project: the chats and their history then
     // belong to that directory, as with `claude` started there.
     property string customWorkDir: ""
+    // Directories picked in the chat popup, newest first, kept in the plugin settings.
+    property var recentWorkDirs: []
+    readonly property int recentWorkDirsMax: 8
     readonly property string defaultWorkDir: homeDir + "/.local/state/dms-agent"
     readonly property string workDir: customWorkDir !== "" ? customWorkDir : defaultWorkDir
     readonly property string cdWorkDir: (customWorkDir !== "" ? "" : "mkdir -p " + shellQuote(workDir) + " && ")
@@ -608,9 +611,21 @@ Singleton {
         if (dir === "") { settingChosen("workDir", ""); done(true); return; }
         runQuietExit("test -d " + shellQuote(dir) + " && echo ok || echo missing", function(output) {
             var ok = String(output).trim() === "ok";
-            if (ok) settingChosen("workDir", dir);
+            if (ok) {
+                settingChosen("workDir", dir);
+                rememberWorkDir(dir);
+            }
             done(ok);
         });
+    }
+
+    function rememberWorkDir(dir) {
+        var list = [dir].concat(recentWorkDirs.filter(function(d) { return d !== dir; }));
+        settingChosen("recentWorkDirs", list.slice(0, recentWorkDirsMax));
+    }
+
+    function forgetWorkDir(dir) {
+        settingChosen("recentWorkDirs", recentWorkDirs.filter(function(d) { return d !== dir; }));
     }
 
     // Folder chooser of the desktop (the same portal dialog as for attachments).
