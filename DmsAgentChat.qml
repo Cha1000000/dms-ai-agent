@@ -118,8 +118,20 @@ Item {
         id: tip
 
         property string text: ""
+        // The text this tip put up, so it can still take it down after a click
+        // has changed the text (Show ↔ Hide, Send ↔ Stop).
+        property string shownText: ""
 
         anchors.fill: parent
+
+        function hide() {
+            if (shownText !== "") chatRoot.hideTip(shownText);
+            shownText = "";
+        }
+
+        // A click that changes the text takes the old tip down; the new one shows
+        // after the usual delay if the pointer is still there.
+        onTextChanged: { hide(); if (tipHover.hovered) tipTimer.restart(); }
 
         // On the button itself: a handler on this overlay item would take the hover
         // from the button's MouseArea underneath, and the button would never light up.
@@ -128,16 +140,16 @@ Item {
         Timer {
             id: tipTimer
             interval: 450
-            onTriggered: if (tipHover.hovered) chatRoot.showTip(tip, tip.text)
+            onTriggered: if (tipHover.hovered && tip.text !== "") { tip.shownText = tip.text; chatRoot.showTip(tip, tip.text); }
         }
 
-        onEnabledChanged: if (!enabled) chatRoot.hideTip(tip.text)
+        onEnabledChanged: if (!enabled) hide()
 
         Connections {
             target: tipHover
             function onHoveredChanged() {
                 if (tipHover.hovered) tipTimer.restart();
-                else { tipTimer.stop(); chatRoot.hideTip(tip.text); }
+                else { tipTimer.stop(); tip.hide(); }
             }
         }
     }
@@ -673,28 +685,97 @@ Item {
                         Layout.alignment: Qt.AlignVCenter
                     }
 
+                    // While the agent works it is the stop button, as in ChatGPT: the
+                    // button itself shows that an answer is on its way.
                     Rectangle {
-                        visible: !AgentService.busy
+                        id: sendButton
                         width: 32; height: 32; radius: height / 2
-                        color: canSend ? AgentTheme.primary : Theme.withAlpha(AgentTheme.surfaceVariant, 0.2)
-                        property bool canSend: inputField.text.trim().length > 0
-                        DankIcon { anchors.centerIn: parent; name: "arrow_upward"; color: parent.canSend ? AgentTheme.primaryText : AgentTheme.surfaceVariantText; size: 18 }
-                        MouseArea { anchors.fill: parent; onClicked: if (parent.canSend) sendCurrentMessage() }
-                        TipArea { text: AgentService.tr("tip.send") }
+                        Layout.alignment: Qt.AlignVCenter
+                        // Attachments alone can be sent too, as with Enter.
+                        property bool canSend: inputField.text.trim().length > 0 || AgentService.pendingAttachments.length > 0
+                        readonly property bool lit: AgentService.busy || canSend
+                        color: !lit ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.2)
+                            : (AgentService.busy && sendArea.containsMouse ? Qt.darker(AgentTheme.primary, 1.25) : AgentTheme.primary)
+
+                        // A ring breathing around the stop button.
+                        Rectangle {
+                            visible: AgentService.busy
+                            anchors.centerIn: parent
+                            width: parent.width + 6; height: width; radius: width / 2
+                            color: "transparent"
+                            border.width: 2; border.color: AgentTheme.primary
+                            SequentialAnimation on opacity {
+                                running: AgentService.busy; loops: Animation.Infinite
+                                NumberAnimation { from: 0.6; to: 0.1; duration: 900; easing.type: Easing.InOutSine }
+                                NumberAnimation { from: 0.1; to: 0.6; duration: 900; easing.type: Easing.InOutSine }
+                            }
+                        }
+
+                        DankIcon {
+                            anchors.centerIn: parent
+                            name: AgentService.busy ? "stop" : "arrow_upward"
+                            filled: AgentService.busy
+                            color: sendButton.lit ? AgentTheme.primaryText : AgentTheme.surfaceVariantText
+                            size: 18
+                        }
+                        MouseArea {
+                            id: sendArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: sendButton.lit ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            // The second click of a double-click on Send must not stop
+                            // the answer it has just asked for.
+                            property double sentAt: 0
+                            onClicked: {
+                                if (AgentService.busy) {
+                                    if (Date.now() - sentAt > 500) AgentService.cancelRequest();
+                                } else if (sendButton.canSend) {
+                                    sentAt = Date.now();
+                                    sendCurrentMessage();
+                                }
+                            }
+                        }
+                        TipArea { text: AgentService.tr(AgentService.busy ? "tip.stop" : "tip.send") }
                     }
                 }
             }
 
             // Status while the agent works, cost and tokens of the last answer after it;
             // a line of its own so a long text can never push the toolbar buttons out.
+            // Folded, only a strip with the grab handle is left, as on a phone's bottom
+            // sheet. An error still unfolds it while it is shown.
             Item {
                 id: statusLine
                 Layout.fillWidth: true
-                Layout.preferredHeight: visible ? 32 : 0
+                Layout.preferredHeight: visible ? (folded ? 10 : 32) : 0
                 readonly property string problem: AgentService.voiceError || AgentService.attachError
+                readonly property bool folded: AgentService.statusLineCollapsed && problem === ""
                 visible: AgentService.busy || problem !== "" || AgentService.lastCost !== "" || AgentService.sessionName !== ""
 
+                // The handle that folds and unfolds the line; the clickable area is
+                // wider and taller than the bar itself.
+                MouseArea {
+                    id: foldArea
+                    visible: statusLine.problem === ""
+                    width: 64; height: 10
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: AgentService.setStatusLineCollapsed(!AgentService.statusLineCollapsed)
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 28; height: 3; radius: height / 2
+                        color: Theme.withAlpha(AgentTheme.surfaceVariantText, foldArea.containsMouse ? 0.9 : 0.35)
+                    }
+
+                    TipArea { text: AgentService.tr(statusLine.folded ? "tip.statusExpand" : "tip.statusCollapse") }
+                }
+
                 RowLayout {
+                    id: statusRow
+                    visible: !statusLine.folded
                     anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 18
                     anchors.topMargin: 2; anchors.bottomMargin: Theme.spacingS + 2; spacing: 6
 
@@ -733,15 +814,6 @@ Item {
                         TipArea { text: sessionNameText.truncated ? AgentService.sessionName : "" }
                     }
 
-                    Rectangle {
-                        visible: AgentService.busy
-                        width: 22; height: 22; radius: height / 2
-                        Layout.alignment: Qt.AlignVCenter
-                        color: cancelArea.containsMouse ? Theme.withAlpha(AgentTheme.error, 0.15) : "transparent"
-                        DankIcon { anchors.centerIn: parent; name: "close"; color: AgentTheme.surfaceVariantText; size: 14 }
-                        MouseArea { id: cancelArea; anchors.fill: parent; hoverEnabled: true; onClicked: AgentService.cancelRequest() }
-                        TipArea { text: AgentService.tr("tip.stop") }
-                    }
                 }
             }
         }

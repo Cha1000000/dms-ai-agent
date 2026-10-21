@@ -88,6 +88,12 @@ Singleton {
     property string permissionMode: "confirm"
     // Switching to a session from the history also switches to its model and effort.
     property bool restoreSessionModel: true
+    // The line under the toolbar (status, cost, session name) folded down to its toggle.
+    property bool statusLineCollapsed: false
+    function setStatusLineCollapsed(collapsed) {
+        statusLineCollapsed = collapsed;
+        settingChosen("statusLineCollapsed", collapsed);
+    }
     readonly property string _noConfirmSentence: "Execute actions immediately, never ask for confirmation. "
     readonly property string _stateDirSentence: "Your working directory is a private state dir, not the user's home. "
     property string systemPrompt: "You are a concise desktop assistant on Linux with niri (Wayland compositor) and DankMaterialShell. " +

@@ -217,6 +217,13 @@ alone, and the id is verified rather than trusted.
 A chat renamed from the history list (or with `/rename` in the CLI) shows its name
 in the bottom-right corner of the window, like the Claude Code CLI does.
 
+### Stop button and status line
+
+While the agent works, the send button turns into a **stop** button with a pulsing
+ring around it; a click ends the answer. The line under the toolbar (status, cost
+and tokens, session name) folds down with a click on the small bar at the bottom
+centre of the card and stays folded until it is opened the same way. An error still shows there while it lasts.
+
 ### Where the chat opens
 
 The three buttons next to *history* pin the chat to the **left edge**, the **centre** or the

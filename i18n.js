@@ -78,6 +78,8 @@ var STRINGS = {
         "tip.mic": "Dictate a message",
         "tip.send": "Send",
         "tip.stop": "Stop the agent",
+        "tip.statusCollapse": "Hide the status line",
+        "tip.statusExpand": "Show the status line",
 
         // The wording an attachment reaches the agent with.
         "prompt.oneImage": "Look at the image {paths} — this is what is on screen right now.",
@@ -158,6 +160,8 @@ var STRINGS = {
         "tip.mic": "Надиктовать сообщение",
         "tip.send": "Отправить",
         "tip.stop": "Остановить агента",
+        "tip.statusCollapse": "Скрыть строку статуса",
+        "tip.statusExpand": "Показать строку статуса",
 
         "prompt.oneImage": "Посмотри изображение {paths} — это то, что сейчас на экране.",
         "prompt.manyImages": "Посмотри изображения ({paths}) — это то, что сейчас на экране.",

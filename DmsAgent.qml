@@ -103,6 +103,7 @@ PluginComponent {
         AgentService.panelHeightPercent = parseInt(pluginData.panelHeightPercent) || 75;
         AgentService.backgroundOpacity = parseInt(pluginData.backgroundOpacity) || 100;
         AgentService.liquidGlass = pluginData.liquidGlass === true;
+        AgentService.statusLineCollapsed = pluginData.statusLineCollapsed === true;
         AgentService.uiScale = Math.max(80, Math.min(125, parseInt(pluginData.uiScale) || 100));
         // The old "Extended Thinking" toggle did nothing but change the status text;
         // whoever had it on gets "high".
