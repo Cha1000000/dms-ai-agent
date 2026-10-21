@@ -92,6 +92,13 @@ PluginSettings {
                     defaultValue: ""
                 }
 
+                ToggleSetting {
+                    settingKey: "restoreSessionModel"
+                    label: "Per-session model"
+                    description: "Opening a chat from the history also switches to the model and effort it was last used with."
+                    defaultValue: true
+                }
+
                 StringSetting {
                     settingKey: "workDir"
                     label: "Working directory"

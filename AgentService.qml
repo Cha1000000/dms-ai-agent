@@ -80,6 +80,8 @@ Singleton {
     // "confirm": the agent asks before every action that needs a permission, and the chat
     // shows an Allow / Deny dialog. "auto": no questions asked (--dangerously-skip-permissions).
     property string permissionMode: "confirm"
+    // Switching to a session from the history also switches to its model and effort.
+    property bool restoreSessionModel: true
     readonly property string _noConfirmSentence: "Execute actions immediately, never ask for confirmation. "
     readonly property string _stateDirSentence: "Your working directory is a private state dir, not the user's home. "
     property string systemPrompt: "You are a concise desktop assistant on Linux with niri (Wayland compositor) and DankMaterialShell. " +
@@ -156,6 +158,11 @@ Singleton {
     property string sessionId: ""
     property string lastCost: ""
     property var history: []
+    // Name given with /rename or from the history list; empty when the session has none.
+    readonly property string sessionName: {
+        const h = sessionId ? history.find(x => x.id === sessionId) : null;
+        return (h && h.name) ? h.name : "";
+    }
 
     signal messageAdded(var message)
     signal responseComplete()
@@ -738,6 +745,19 @@ Singleton {
         });
     }
 
+    // Picks the model and effort a session was left with, as recorded in its transcript
+    // (the resolved model id, e.g. "claude-sonnet-5-5"). The picker lists aliases, so the
+    // id is matched against them first.
+    function applySessionModel(model, level) {
+        if (!model) return;
+        // No match (the list not fetched yet, or a model it no longer offers): leave the
+        // choice alone rather than pin the default to a full versioned id.
+        const m = models.find(x => x.resolved === model) || models.find(x => x.id === model);
+        if (!m) return;
+        if (m.id !== claudeModel) chooseModel(m.id);
+        if (level && level !== effort && effortLevels.indexOf(level) >= 0) chooseEffort(level);
+    }
+
     function resumeSession(historySessionId) {
         if (busy) return;
         sessionId = historySessionId;
@@ -747,7 +767,11 @@ Singleton {
 
         runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " restore " + shellQuote(historySessionId), function(output) {
             var loaded = [];
-            try { loaded = JSON.parse(String(output).trim()); } catch(e) {}
+            var restored = {};
+            try { restored = JSON.parse(String(output).trim()); } catch(e) {}
+            if (Array.isArray(restored)) loaded = restored;
+            else if (restored && Array.isArray(restored.messages)) loaded = restored.messages;
+            if (restoreSessionModel && restored && !Array.isArray(restored)) applySessionModel(restored.model, restored.effort);
             for (var i = 0; i < loaded.length; i++) {
                 loaded[i].timestamp = Date.now();
                 var newMsgs = messages.slice();

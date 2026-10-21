@@ -96,6 +96,7 @@ Then, in DMS:
 |---|---|---|
 | Model | `haiku` | `haiku`, `sonnet`, `opus` or a full id like `claude-opus-4-7`; the dropdown lists the same models as `/model` in the CLI (minus Fable), fetched from it |
 | Effort | auto | `low`, `medium`, `high`, `xhigh`, `max` (`--effort`); also switchable in the chat toolbar, levels depend on the model |
+| Per-session model | on | opening a chat from the history switches to the model and effort it was last used with (read from its transcript). A chat run on *auto* comes back with the level the CLI actually used |
 | System Prompt | built-in | your own instructions for the agent |
 | Pill Label | `Jarvis` | text next to the icon in the bar |
 | Chat Hotkey (niri) | none | any niri key combo, e.g. `Mod+Space`; overrides an existing bind on that key; empty removes it |
@@ -210,6 +211,11 @@ Each row in the history list has a cross that deletes that conversation, and
 is deleted from disk and there is no copy anywhere. Only agent conversations are
 touched — an interactive Claude Code session started in the same directory is left
 alone, and the id is verified rather than trusted.
+
+### Session name
+
+A chat renamed from the history list (or with `/rename` in the CLI) shows its name
+in the bottom-right corner of the window, like the Claude Code CLI does.
 
 ### Where the chat opens
 

@@ -67,7 +67,8 @@ if action == "list":
                 except:
                     pass
         if title:
-            results.append({"id": sid, "title": custom_title(f) or title, "date": int(mtime * 1000)})
+            name = custom_title(f)
+            results.append({"id": sid, "title": name or title, "name": name, "date": int(mtime * 1000)})
     print(json.dumps(results))
 
 elif action == "delete":
@@ -122,6 +123,9 @@ elif action == "restore":
     sid = sys.argv[2] if len(sys.argv) > 2 else ""
     session_file = base + sid + ".jsonl"
     msgs = []
+    # The CLI stamps every reply with the model and effort it ran with; the last
+    # reply tells what the session was using when it was left.
+    model = effort = ""
     if os.path.exists(session_file):
         with open(session_file) as f:
             for line in f:
@@ -137,6 +141,12 @@ elif action == "restore":
                                     msgs.append({"role": "user", "content": c["text"]})
                                     break
                     elif d.get("type") == "assistant":
+                        # Subagent replies and synthetic or gateway records say nothing about
+                        # the chat's own model. Older CLIs have no requestedModel.
+                        used = d.get("requestedModel") or d.get("message", {}).get("model") or ""
+                        if not d.get("isSidechain") and used.startswith("claude-"):
+                            model = used
+                            effort = d.get("effort") or effort
                         content = d.get("message", {}).get("content", [])
                         if isinstance(content, str) and content.strip():
                             msgs.append({"role": "assistant", "content": content})
@@ -147,4 +157,4 @@ elif action == "restore":
                                     break
                 except:
                     pass
-    print(json.dumps(msgs[-20:]))
+    print(json.dumps({"messages": msgs[-20:], "model": model, "effort": effort}))

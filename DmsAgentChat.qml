@@ -692,7 +692,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: visible ? 32 : 0
                 readonly property string problem: AgentService.voiceError || AgentService.attachError
-                visible: AgentService.busy || problem !== "" || AgentService.lastCost !== ""
+                visible: AgentService.busy || problem !== "" || AgentService.lastCost !== "" || AgentService.sessionName !== ""
 
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 18
@@ -715,6 +715,22 @@ Item {
                         font.pixelSize: Theme.fontSizeSmall
                         elide: Text.ElideRight
                         Layout.fillWidth: true; Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    // Session name in the corner, as the Claude Code CLI shows it.
+                    StyledText {
+                        id: sessionNameText
+                        visible: AgentService.sessionName !== ""
+                        text: AgentService.sessionName
+                        color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.6)
+                        font.pixelSize: Theme.fontSizeSmall
+                        elide: Text.ElideRight
+                        wrapMode: Text.NoWrap
+                        maximumLineCount: 1
+                        horizontalAlignment: Text.AlignRight
+                        Layout.maximumWidth: statusLine.width * 0.45
+                        Layout.alignment: Qt.AlignVCenter
+                        TipArea { text: sessionNameText.truncated ? AgentService.sessionName : "" }
                     }
 
                     Rectangle {

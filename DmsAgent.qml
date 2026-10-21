@@ -121,6 +121,7 @@ PluginComponent {
         AgentService.recentWorkDirs = recent;
         AgentService.setWorkDir(pluginData.workDir || "");
         AgentService.permissionMode = pluginData.permissionMode === "auto" ? "auto" : "confirm";
+        AgentService.restoreSessionModel = pluginData.restoreSessionModel !== false;
         AgentTheme.apply(pluginData);
         AgentService.updateNotify = pluginData.updateNotify === true;
         AgentService.checkForUpdates();
