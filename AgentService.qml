@@ -77,6 +77,12 @@ Singleton {
         return (m && m.efforts) ? m.efforts : [];
     }
     readonly property string activeEffort: effortLevels.indexOf(effort) >= 0 ? effort : ""
+    // What goes to --model: the full id the picker resolved, not the alias. The CLI does not
+    // always honour the alias: `--model haiku` ran claude-sonnet-5-5 on 2.1.306.
+    readonly property string cliModel: {
+        const m = models.find(x => x.id === claudeModel);
+        return (m && m.resolved) ? m.resolved : claudeModel;
+    }
     // "confirm": the agent asks before every action that needs a permission, and the chat
     // shows an Allow / Deny dialog. "auto": no questions asked (--dangerously-skip-permissions).
     property string permissionMode: "confirm"
@@ -960,7 +966,7 @@ Singleton {
         if (customWorkDir !== "")
             prompt_ = prompt_.replace(_stateDirSentence, "Your working directory is " + customWorkDir + ", a directory the user chose: relative paths refer to it. ");
         var cmd = cdWorkDir + "DMS_AGENT=1 exec claude -p"
-            + " --model " + shellQuote(claudeModel)
+            + " --model " + shellQuote(cliModel)
             + (activeEffort !== "" ? " --effort " + shellQuote(activeEffort) : "")
             + (confirm ? " --input-format stream-json --permission-mode default --permission-prompt-tool stdio"
                        : "")
