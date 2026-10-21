@@ -693,7 +693,7 @@ Item {
                         Layout.alignment: Qt.AlignVCenter
                         // Attachments alone can be sent too, as with Enter.
                         property bool canSend: inputField.text.trim().length > 0 || AgentService.pendingAttachments.length > 0
-                        readonly property bool lit: AgentService.busy || canSend
+                        readonly property bool lit: (AgentService.busy && !AgentService.loadingSession) || canSend
                         color: !lit ? Theme.withAlpha(AgentTheme.surfaceVariant, 0.2)
                             : (AgentService.busy && sendArea.containsMouse ? Qt.darker(AgentTheme.primary, 1.25) : AgentTheme.primary)
 

@@ -770,11 +770,16 @@ Singleton {
         if (level && level !== effort && effortLevels.indexOf(level) >= 0) chooseEffort(level);
     }
 
+    // Loading a session is not a request to the agent: Stop has nothing to end
+    // while it runs, so the button is shown dimmed.
+    property bool loadingSession: false
+
     function resumeSession(historySessionId) {
         if (busy) return;
         sessionId = historySessionId;
         messages = [];
         busy = true;
+        loadingSession = true;
         statusText = tr("status.loadingSession");
 
         runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " restore " + shellQuote(historySessionId), function(output) {
@@ -794,6 +799,7 @@ Singleton {
             if (loaded.length === 0) {
                 addMessage("assistant", "Session resumed.");
             }
+            loadingSession = false;
             busy = false;
             statusText = tr("status.ready");
         });
@@ -823,10 +829,11 @@ Singleton {
         if (busy || !text.trim()) return;
         addMessage("user", text);
         busy = true;
+        var request = ++_requestId;
 
         var intent = detectIntent(text);
         if (intent) {
-            prefetchContext(intent, function(ctx) { callClaude(text + "\n" + ctx); });
+            prefetchContext(intent, function(ctx) { if (request === _requestId) callClaude(text + "\n" + ctx); });
         } else {
             statusText = tr("status.thinking");
             callClaude(text);
@@ -941,11 +948,20 @@ Singleton {
         }
     }
 
+    // Bumped by every message and by Stop. The steps before claude starts (context
+    // prefetch, the working directory check) run asynchronously; one that finds
+    // the number changed was stopped meanwhile and must not launch the agent.
+    property int _requestId: 0
+
     function cancelRequest() {
+        if (loadingSession) return;
         permissionQueue = [];
+        _requestId++;
         if (_claudeProcess) {
             _claudeProcess.signal(15);
             _claudeProcess = null;
+        }
+        if (busy) {
             busy = false;
             statusText = tr("status.ready");
         }
@@ -953,8 +969,10 @@ Singleton {
 
     function callClaude(prompt) {
         if (customWorkDir === "") { _launchClaude(prompt); return; }
+        var request = _requestId;
         // A typo in the setting should say so, not end in "agent exited".
         runQuietExit("test -d " + shellQuote(customWorkDir) + " && echo ok || echo missing", function(output) {
+            if (request !== _requestId) return;
             if (String(output).trim() === "ok") _launchClaude(prompt);
             else finishResponse(tr("error.workDirMissing") + " " + customWorkDir);
         });
