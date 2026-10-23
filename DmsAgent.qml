@@ -167,6 +167,8 @@ PluginComponent {
         // the compositor per step). Only the chat itself takes input: everything
         // else is masked out and clicks go through to the windows underneath.
         readonly property real ui: AgentService.uiScale / 100
+        // Natural width of the chat, a layout size like the fixed popupWidth of the
+        // DMS popouts; Window Scale zooms it.
         readonly property real chatWidth: 660 * ui
         readonly property real chatFraction: AgentService.panelFractionFor(root.screenName)
         anchors.bottom: true
@@ -228,12 +230,12 @@ PluginComponent {
         WlrLayershell.namespace: "dms:agent"
         WlrLayershell.exclusiveZone: 0
         WlrLayershell.keyboardFocus: isVisible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-        WlrLayershell.margins.bottom: 44
+        WlrLayershell.margins.bottom: Theme.iconSizeLarge + Theme.spacingM
 
         // Отсчитывается от монитора, на котором панель показана, за вычетом
         // отступа снизу; на маленьком экране не должна упереться в бар.
         implicitHeight: {
-            var available = (screen ? screen.height : 1080) - WlrLayershell.margins.bottom - 48;
+            var available = (screen ? screen.height : 1080) - WlrLayershell.margins.bottom - Theme.spacingXL * 2;
             var base = Math.max(420, Math.round(available * AgentService.panelHeightPercent / 100));
             return Math.min(available, Math.round(base * ui));
         }
@@ -252,7 +254,7 @@ PluginComponent {
             Item {
                 id: animContainer
                 anchors.fill: parent
-                anchors.margins: 10
+                anchors.margins: Theme.spacingS + Theme.spacingXXS
                 scale: agentPanel.animScale
                 // Dimmed while the pointer is past the edge: letting go there moves
                 // the chat to the next monitor.
@@ -342,7 +344,7 @@ PluginComponent {
 
     verticalBarPill: Component {
         Column {
-            spacing: 2
+            spacing: Theme.spacingXXS
             DankIcon {
                 visible: AgentService.busy
                 name: "hourglass_top"; color: AgentTheme.warning
