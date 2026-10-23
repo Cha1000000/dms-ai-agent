@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """List Claude Code sessions as JSON for DMS Agent history."""
-import json, os, glob, re, sys
+import json, os, glob, re, shlex, shutil, subprocess, sys
 
 action = sys.argv[1] if len(sys.argv) > 1 else "list"
 # The agent runs `claude -p` from the shell's working directory, and Claude Code
@@ -40,6 +40,31 @@ def custom_title(path):
             if d.get("type") == "custom-title":
                 name = d.get("customTitle") or ""
     return name.strip()
+
+
+def forget_synced(ids):
+    """ccsync (github.com/Cha1000000/claude-code-sync) keeps a copy of every
+    session and lays a deleted one back on its next pull. Where it is set up,
+    deleting also forgets the session there: the copy leaves the vault and the
+    other machines drop theirs. It does a git pull and push per session, so it
+    runs on its own and the history does not wait for it."""
+    engine = os.path.expanduser("~/claude-sync-vault/bin/ccsync.py")
+    if not ids or not os.path.isfile(engine):
+        return
+    # One after another, as each run commits to the same git repo; one that
+    # fails (no network) does not stop the rest.
+    script = "; ".join("python3 %s forget --yes --session %s --reason 'deleted in DMS Agent'"
+                       % (shlex.quote(engine), shlex.quote(sid)) for sid in ids)
+    # Deleting rows one by one starts a run per row; flock queues them too.
+    command = ["sh", "-c", script]
+    if shutil.which("flock"):
+        lock = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "dms-agent-forget.lock")
+        command = ["flock", lock] + command
+    try:
+        subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass  # the session is gone here anyway; the vault keeps its copy as before
 
 
 if action == "list":
@@ -82,6 +107,7 @@ elif action == "delete":
         if os.path.isfile(path) and is_agent_session(path):
             os.remove(path)
             ok = True
+            forget_synced([sid])
     print(json.dumps({"deleted": 1 if ok else 0}))
 
 elif action == "rename":
@@ -109,15 +135,16 @@ elif action == "rename":
     print(json.dumps({"renamed": 1 if ok else 0}))
 
 elif action == "delete-all":
-    removed = 0
+    removed = []
     for f in glob.glob(base + "*.jsonl"):
         if is_agent_session(f):
             try:
                 os.remove(f)
-                removed += 1
+                removed.append(os.path.basename(f)[:-len(".jsonl")])
             except OSError:
                 pass
-    print(json.dumps({"deleted": removed}))
+    forget_synced(removed)
+    print(json.dumps({"deleted": len(removed)}))
 
 elif action == "restore":
     sid = sys.argv[2] if len(sys.argv) > 2 else ""
