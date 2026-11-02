@@ -97,7 +97,18 @@ PluginComponent {
     onPluginDataChanged: {
         loadPanelPositions();
         if (!pluginData) return;
-        AgentService.claudeModel = pluginData.claudeModel || "haiku";
+        // A provider switch takes its own saved model from the map; a model
+        // edit for the same provider is the newer choice. providerModels goes
+        // first: onClaudeModelChanged syncs the map and would rewrite it from
+        // stale state otherwise.
+        var savedModels = pluginData.providerModels || {};
+        var savedProvider = pluginData.provider || "claude";
+        var sameProvider = AgentService.providerId === savedProvider;
+        AgentService.providerModels = savedModels;
+        AgentService.providerId = savedProvider;
+        AgentService.claudeModel = (!sameProvider && savedModels[savedProvider] !== undefined)
+                ? savedModels[savedProvider]
+                : (pluginData.claudeModel || "haiku");
         AgentService.maxTokens = parseInt(pluginData.maxTokens) || 1024;
         AgentService.bubbleFontSize = parseInt(pluginData.bubbleFontSize) || 13;
         AgentService.panelHeightPercent = parseInt(pluginData.panelHeightPercent) || 75;

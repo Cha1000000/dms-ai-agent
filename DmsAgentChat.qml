@@ -281,7 +281,12 @@ Item {
         readonly property bool otherBusy: AgentService.voiceState !== "idle" && !active
         readonly property bool warmingUp: AgentService.voiceWarmupInProgress
 
+        // While the agent answers, the capture buttons stay only for the
+        // providers that read the next message from stdin (Claude Code,
+        // CheapVibeCode): the other CLIs take their prompt as an argument and
+        // cannot be fed a voice message without starting a second run.
         visible: !AgentService.busy
+            || (AgentService.provider.caps && AgentService.provider.caps.stdinEnabled)
         width: chatRoot.buttonSize; height: width; radius: height / 2
         opacity: otherBusy || warmingUp ? 0.5 : 1
         color: recording ? Theme.withAlpha(AgentTheme.error, 0.18)
@@ -827,6 +832,23 @@ Item {
                         font.pixelSize: Theme.fontSizeSmall
                         elide: Text.ElideRight
                         Layout.fillWidth: true; Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    // Which agent CLI this chat runs on: with several providers
+                    // the same chat can be from any of them, and the sessions of
+                    // one are invisible in another.
+                    StyledText {
+                        id: providerNameText
+                        visible: AgentService.provider.title !== ""
+                        text: AgentService.provider.title
+                        color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.6)
+                        font.pixelSize: Theme.fontSizeSmall
+                        elide: Text.ElideRight
+                        wrapMode: Text.NoWrap
+                        maximumLineCount: 1
+                        horizontalAlignment: Text.AlignRight
+                        Layout.maximumWidth: statusLine.width * 0.3
+                        Layout.alignment: Qt.AlignVCenter
                     }
 
                     // Session name in the corner, as the Claude Code CLI shows it.

@@ -14,6 +14,7 @@ var STRINGS = {
         "effort.high": "High",
         "effort.xhigh": "Extra high",
         "effort.max": "Max",
+        "effort.ultracode": "Ultracode",
 
         "history.empty": "No conversations yet",
         "history.clearAll": "Clear all",
@@ -38,6 +39,7 @@ var STRINGS = {
         "model.best": "Best",
 
         "status.ready": "Ready",
+        "status.cancelled": "Cancelled",
         "status.thinking": "Thinking...",
         "status.processing": "Processing...",
         "status.writing": "Writing answer...",
@@ -53,6 +55,12 @@ var STRINGS = {
         "error.noRecognition": "No response from speech recognition",
         "error.noWindow": "Could not capture the focused window",
         "error.workDirMissing": "Working directory not found:",
+        "error.noApiKey": "API key is not set. Add it in Settings → Provider.",
+        "error.notLoggedIn": "Not signed in",
+        "loginHint.claude": "Run 'claude' in a terminal and sign in.",
+        "loginHint.cvc": "Add the API key in Settings → Provider.",
+        "loginHint.qoder": "Run 'qodercli login' in a terminal.",
+        "loginHint.kimi": "Run 'kimi login' in a terminal.",
 
         "update.available": "Update available",
         "update.how": "Settings → Plugins → Update",
@@ -96,6 +104,7 @@ var STRINGS = {
         "effort.high": "Высокий",
         "effort.xhigh": "Очень высокий",
         "effort.max": "Максимум",
+        "effort.ultracode": "Ультракод",
 
         "history.empty": "Пока нет разговоров",
         "history.clearAll": "Очистить всё",
@@ -120,6 +129,7 @@ var STRINGS = {
         "model.best": "Лучшая",
 
         "status.ready": "Готов",
+        "status.cancelled": "Отменено",
         "status.thinking": "Думаю...",
         "status.processing": "Обрабатываю...",
         "status.writing": "Пишу ответ...",
@@ -135,6 +145,12 @@ var STRINGS = {
         "error.noRecognition": "Нет ответа от распознавания речи",
         "error.noWindow": "Не удалось снять активное окно",
         "error.workDirMissing": "Рабочий каталог не найден:",
+        "error.noApiKey": "API-ключ не задан. Добавьте его в Настройках → Provider.",
+        "error.notLoggedIn": "Нет входа",
+        "loginHint.claude": "Запустите 'claude' в терминале и войдите.",
+        "loginHint.cvc": "Добавьте API-ключ в Настройках → Provider.",
+        "loginHint.qoder": "Запустите 'qodercli login' в терминале.",
+        "loginHint.kimi": "Запустите 'kimi login' в терминале.",
 
         "update.available": "Доступно обновление",
         "update.how": "Настройки → Плагины → Обновить",

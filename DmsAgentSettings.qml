@@ -1,13 +1,26 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell.Io
+import Quickshell
 import Quickshell.Services.Pipewire
 import qs.Common
 import qs.Widgets
 import qs.Modules.Plugins
+import "providers.js" as Providers
+import "i18n.js" as I18n
 
 PluginSettings {
     id: root
     pluginId: "dmsAgent"
+
+    // The interface language, the same rule the chat uses: the Language
+    // setting is about speech recognition, but someone who fixes it to their
+    // own language means the plugin to speak it too.
+    readonly property string uiLanguage: {
+        var lang = Quickshell.env("LC_ALL") || Quickshell.env("LC_MESSAGES")
+                    || Quickshell.env("LANG") || "";
+        return String(lang).substring(0, 2).toLowerCase();
+    }
 
     // Microphones offered in the dropdown. Sinks are outputs and streams are
     // individual apps, so both are filtered out; what is left are capture devices.
@@ -21,6 +34,45 @@ PluginSettings {
             list.push({ label: micLabel(node), value: node.name });
         return list;
     }
+
+    // Agent CLIs the chat can run. Providers.js is the registry; adding one there
+    // is enough for it to show up here and in the model picker.
+    readonly property var providerOptions: {
+        const list = [];
+        for (const p of Providers.all())
+            list.push({ label: p.title, value: p.id });
+        return list;
+    }
+
+    // Ask-first needs the can_use_tool handshake; Qoder and CVC do not speak it,
+    // so those providers only offer "No confirmation".
+    readonly property bool providerCanAskFirst: {
+        const p = Providers.byId(providerSelect.value || "claude");
+        return !!(p.caps && p.caps.askFirst);
+    }
+    readonly property var permissionModeOptions: {
+        if (providerCanAskFirst)
+            return [
+                { label: "Ask first", value: "confirm" },
+                { label: "No confirmation", value: "auto" }
+            ];
+        return [{ label: "No confirmation (ask first unavailable for this provider)", value: "auto" }];
+    }
+    readonly property string permissionModeDesc: {
+        if (providerCanAskFirst)
+            return "Ask first: the chat shows an Allow / Deny dialog before the agent runs a command or changes a file. No confirmation: the agent acts immediately (Claude Code runs with --dangerously-skip-permissions, unrestricted shell access as you).";
+        return "This provider cannot pause for permission prompts, so the chat always runs unattended (equivalent to --dangerously-skip-permissions).";
+    }
+
+    // A provider without the permission handshake cannot honour "confirm"; the
+    // stored value follows the provider so the picker never claims a dialog that
+    // will not appear. Checked on open too — the handler alone only sees a change.
+    function syncPermissionMode() {
+        if (!providerCanAskFirst)
+            saveValue("permissionMode", "auto");
+    }
+    onProviderCanAskFirstChanged: syncPermissionMode()
+    Component.onCompleted: Qt.callLater(syncPermissionMode)
 
     function micLabel(node) {
         const props = node.properties || {};
@@ -38,6 +90,167 @@ PluginSettings {
     // SelectionSetting reads synchronously too and shows its default after reopening.
     component SavedSelection: SelectionSetting {
         Component.onCompleted: Qt.callLater(loadValue)
+    }
+
+    // The CheapVibeCode API key. Lives in ~/.local/state/dms-agent/providers.json
+    // (0600) via provider_secrets.py — not in plugin settings, which ccsync
+    // copies between machines. "Test" hits GET /v1/models with the stored key.
+    component CvcKeySetting: Column {
+        id: cvcKey
+        width: parent.width
+        spacing: Theme.spacingS
+
+        readonly property string secretsScript: decodeURIComponent(String(Qt.resolvedUrl("provider_secrets.py")).replace(/^file:\/\//, ""))
+        property string keyStatus: ""
+
+        function loadStatus() {
+            keyCheck.running = true;
+        }
+        Component.onCompleted: Qt.callLater(loadStatus)
+
+        Process {
+            id: keyCheck
+            command: ["python3", cvcKey.secretsScript, "check", "cvc"]
+            stdout: StdioCollector {
+                onStreamFinished: cvcKey.keyStatus = String(text).trim()
+            }
+        }
+        Process {
+            id: keySave
+            // The key goes in through stdin, never as an argument: a command
+            // line is readable by any user of the machine in /proc/<pid>/cmdline.
+            property string pendingKey: ""
+            command: ["python3", cvcKey.secretsScript, "set", "cvc"]
+            stdinEnabled: true
+            onStarted: {
+                write(pendingKey + "\n");
+                stdinEnabled = false;
+                pendingKey = "";
+            }
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    cvcKey.keyResult = String(text).trim() === "ok" ? "Saved" : "Failed to save";
+                    cvcKey.loadStatus();
+                }
+            }
+        }
+        Process {
+            id: keyTest
+            command: ["python3", cvcKey.secretsScript, "test", "cvc"]
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    const out = String(text).trim();
+                    if (out.indexOf("ok ") === 0)
+                        cvcKey.keyResult = "Key works — " + out.substring(3) + " models";
+                    else if (out === "missing")
+                        cvcKey.keyResult = "No key saved yet";
+                    else
+                        cvcKey.keyResult = out;
+                }
+            }
+        }
+        property string keyResult: ""
+
+        StyledText {
+            text: "CheapVibeCode API key"
+            font.pixelSize: Theme.fontSizeMedium
+            font.weight: Font.Medium
+            color: Theme.surfaceText
+        }
+        StyledText {
+            text: "Stored only on this machine in ~/.local/state/dms-agent/providers.json (0600), never in synced plugin settings. Get a key at cheapvibecode.ru."
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.surfaceVariantText
+            width: parent.width
+            wrapMode: Text.WordWrap
+        }
+
+        Row {
+            width: parent.width
+            spacing: Theme.spacingM
+
+            DankTextField {
+                id: keyField
+                width: parent.width - saveBtn.width - testBtn.width - Theme.spacingM * 2
+                placeholderText: cvcKey.keyStatus === "set" ? "key saved — type to replace" : "sk-cvc-..."
+                showPasswordToggle: true
+                echoMode: TextInput.Password
+            }
+            DankButton {
+                id: saveBtn
+                text: "Save"
+                onClicked: {
+                    if (keyField.text.trim() === "") return;
+                    keySave.pendingKey = keyField.text.trim();
+                    keyField.text = "";
+                    keySave.running = true;
+                }
+            }
+            DankButton {
+                id: testBtn
+                text: "Test"
+                onClicked: {
+                    cvcKey.keyResult = "Checking…";
+                    // models.py --provider cvc refreshes the cache and fails when
+                    // the key is missing or rejected; that is the validation.
+                    keyTest.running = true;
+                }
+            }
+        }
+        StyledText {
+            text: cvcKey.keyResult
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.surfaceVariantText
+            visible: cvcKey.keyResult !== ""
+        }
+    }
+
+    // Sign-in state of the provider the chat will run. The chat already refuses
+    // to start with a hint, but the reason belongs here too — settings is where
+    // the user looks before the first message. Each provider checks its own
+    // source (OAuth files, an API key, `claude auth status`).
+    component ProviderSignIn: Column {
+        id: signIn
+        width: parent.width
+        spacing: Theme.spacingXXS
+
+        // Passed in at the use site: an id from the enclosing file is not visible
+        // inside an inline component, and `root.<id>` is not a property at all.
+        property string providerId: "claude"
+        readonly property string secretsScript: decodeURIComponent(String(Qt.resolvedUrl("provider_secrets.py")).replace(/^file:\/\//, ""))
+        // The hint comes from the same table the chat uses, so the two cannot
+        // drift apart.
+        function hint(provider) {
+            return I18n.t(root.uiLanguage, "loginHint." + provider);
+        }
+        property string state: ""      // "set" | "missing" | ""
+
+        onProviderIdChanged: refresh()
+        Component.onCompleted: Qt.callLater(refresh)
+
+        // The command is built here, not bound: a binding on `providerId` is
+        // re-evaluated after this change handler, so the first check after a
+        // provider switch would still run against the previous provider.
+        function refresh() {
+            check.command = ["python3", secretsScript, "check", providerId];
+            check.running = true;
+        }
+
+        Process {
+            id: check
+            stdout: StdioCollector {
+                onStreamFinished: signIn.state = String(text).trim()
+            }
+        }
+
+        StyledText {
+            visible: signIn.state === "missing"
+            width: parent.width
+            wrapMode: Text.WordWrap
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.withAlpha(Theme.error, 0.9)
+            text: "Not signed in. " + signIn.hint(signIn.providerId)
+        }
     }
 
     // Properties of a node are only populated while something holds it.
@@ -70,7 +283,34 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 StyledText {
-                    text: "Claude"
+                    text: "Provider"
+                    font.pixelSize: Theme.fontSizeMedium
+                    font.weight: Font.Bold
+                    color: Theme.surfaceText
+                }
+
+                SavedSelection {
+                    id: providerSelect
+                    settingKey: "provider"
+                    label: "Agent"
+                    description: "Which agent CLI runs the chat. Claude Code is the default and works with the subscription you are signed in to. Other providers sign in on their own (an OAuth login or an API key) — see their status below once they are set up."
+                    defaultValue: "claude"
+                    options: providerOptions
+                }
+
+                ProviderSignIn {
+                    providerId: providerSelect.value || "claude"
+                }
+
+                // CheapVibeCode speaks the Claude Code protocol on their gateway and
+                // needs an API key. It is kept out of plugin settings on purpose: those
+                // are synced between machines by ccsync, keys must not travel.
+                CvcKeySetting {
+                    visible: providerSelect.value === "cvc"
+                }
+
+                StyledText {
+                    text: "Model & Effort"
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Bold
                     color: Theme.surfaceText
@@ -108,14 +348,12 @@ PluginSettings {
                 }
 
                 SavedSelection {
+                    id: permissionSelect
                     settingKey: "permissionMode"
                     label: "Permissions"
-                    description: "Ask first: the chat shows an Allow / Deny dialog before the agent runs a command or changes a file. No confirmation: the agent acts immediately (Claude Code runs with --dangerously-skip-permissions, unrestricted shell access as you)."
+                    description: permissionModeDesc
                     defaultValue: "confirm"
-                    options: [
-                        { label: "Ask first", value: "confirm" },
-                        { label: "No confirmation", value: "auto" }
-                    ]
+                    options: permissionModeOptions
                 }
 
                 StringSetting {

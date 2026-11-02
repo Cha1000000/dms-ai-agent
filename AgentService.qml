@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "i18n.js" as I18n
+import "providers.js" as Providers
 
 Singleton {
     id: root
@@ -26,6 +27,24 @@ Singleton {
 
     property string claudeModel: "haiku"
 
+    // The model picked for each provider, keyed by provider id. Switching
+    // providers swaps catalogs: a model id from one ("Qwen3.8-Flash") is
+    // rejected by another's --model, so each keeps its own choice.
+    property var providerModels: ({})
+    // The settings page writes claudeModel directly, so the map follows every
+    // change — not only the ones made through chooseModel().
+    onClaudeModelChanged: syncProviderModel()
+    function syncProviderModel() {
+        if (providerModels[providerId] === claudeModel) return;
+        var map = {};
+        for (var k in providerModels) map[k] = providerModels[k];
+        map[providerId] = claudeModel;
+        providerModels = map;
+        // The map is a local here on purpose: saving reloads the settings into
+        // these properties (DmsAgent.qml), which replaces providerModels.
+        settingChosen("providerModels", map);
+    }
+
     // The /model list of the CLI (minus Fable), filled by models.py so new
     // versions and names appear on their own. Until it answers, the bare aliases
     // are offered — they always point at the latest version anyway.
@@ -35,6 +54,7 @@ Singleton {
         { id: "haiku", label: "Haiku", resolved: "" }
     ]
     readonly property string modelsScript: decodeURIComponent(String(Qt.resolvedUrl("models.py")).replace(/^file:\/\//, ""))
+    readonly property string secretsScript: decodeURIComponent(String(Qt.resolvedUrl("provider_secrets.py")).replace(/^file:\/\//, ""))
     property double _modelsFetchedAt: 0
 
     // A model is selected either by its alias ("opus") or by a full id
@@ -59,10 +79,29 @@ Singleton {
     function refreshModels() {
         if (Date.now() - _modelsFetchedAt < 3600000) return;
         _modelsFetchedAt = Date.now();
-        run(cdWorkDir + "python3 " + shellQuote(modelsScript) + " 2>/dev/null", function(output) {
+        const wanted = providerId;
+        run(cdWorkDir + "python3 " + shellQuote(modelsScript) + " --provider " + shellQuote(wanted) + " 2>/dev/null", function(output) {
+            // A switch to another provider while the request was in flight leaves
+            // this answer stale — the newer call owns the list now.
+            if (wanted !== providerId) return;
             try {
                 const list = JSON.parse(output);
-                if (Array.isArray(list) && list.length > 0) models = list;
+                if (Array.isArray(list) && list.length > 0) {
+                    models = list;
+                    // CVC-style gateways only take full ids from their catalog, so a
+                    // saved id left from another provider ("opus", "Qwen3.8-Flash")
+                    // would be rejected. Only a bare alias ("haiku") is left alone
+                    // when the provider accepts aliases — every other id must be on
+                    // the list to survive.
+                    const saved = String(claudeModel);
+                    const aliasLike = !!provider.aliasModels && /^[a-z0-9-]+$/i.test(saved);
+                    if (!aliasLike && !models.some(isCurrentModel)) {
+                        const hint = String(claudeModel).toLowerCase();
+                        const byHint = models.find(x => hint && String(x.id).toLowerCase().indexOf(hint) >= 0);
+                        const first = models.find(x => String(x.id).indexOf("group") < 0) || models[0];
+                        chooseModel((byHint && String(byHint.id).indexOf("group") < 0 ? byHint : first).id);
+                    }
+                }
             } catch (e) {
                 _modelsFetchedAt = 0;
             }
@@ -86,6 +125,43 @@ Singleton {
     // "confirm": the agent asks before every action that needs a permission, and the chat
     // shows an Allow / Deny dialog. "auto": no questions asked (--dangerously-skip-permissions).
     property string permissionMode: "confirm"
+    // Which agent CLI runs the chat. "claude" is the default and keeps every setting
+    // that predates the provider registry.
+    property string providerId: "claude"
+    readonly property var provider: Providers.byId(providerId)
+    // Another provider means another catalog and another set of sessions: the
+    // hour-long model cache and the history both belong to the one before.
+    onProviderIdChanged: {
+        // A session belongs to the provider that created it: the other CLI
+        // cannot find it, and `--resume` of a missing session is a failed run
+        // (blank answer, caught live 2026-11-02). A chat in flight is not carried
+        // over either — it is left in the old provider's history.
+        //
+        // The order matters: cancelRequest() ignores a run that is still
+        // loading a session, so the flag is cleared first. Otherwise the old
+        // provider's process would keep running and write its answer into the
+        // chat that is being cleared right here.
+        loadingSession = false;
+        cancelRequest();
+        messages = [];
+        sessionId = "";
+        lastCost = "";
+        // Restore this provider's own last model; a foreign id would be
+        // rejected by --model. A first visit keeps the current one — the
+        // refreshModels() fallback then picks from the new catalog. Saved here
+        // too: a restore changes only these properties, and the next settings
+        // reload would bring the other provider's model back.
+        if (providerModels[providerId] !== undefined && providerModels[providerId] !== claudeModel) {
+            claudeModel = providerModels[providerId];
+            settingChosen("claudeModel", claudeModel);
+        }
+        _modelsFetchedAt = 0;
+        refreshModels();
+        loadHistory();
+    }
+    // Providers that cannot ask before acting (Qoder, Kimi) always run unattended;
+    // the Permissions picker shows this as a fixed state instead of a choice.
+    readonly property bool providerCanAskFirst: provider.caps && provider.caps.askFirst
     // Switching to a session from the history also switches to its model and effort.
     property bool restoreSessionModel: true
     // The line under the toolbar (status, cost, session name) folded down to its toggle.
@@ -133,8 +209,11 @@ Singleton {
     signal settingChosen(string key, var value)
 
     function chooseModel(id) {
-        claudeModel = id;
+        // Saved before the property changes: saving reloads the settings into
+        // these properties (DmsAgent.qml), which would briefly restore the old
+        // model and rewrite the map from it.
         settingChosen("claudeModel", id);
+        claudeModel = id;
     }
 
     function chooseEffort(level) {
@@ -728,7 +807,7 @@ Singleton {
     readonly property string historyScript: decodeURIComponent(String(Qt.resolvedUrl("history.py")).replace(/^file:\/\//, ""))
 
     function loadHistory() {
-        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " list", function(output) {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " list", function(output) {
             try { history = JSON.parse(String(output).trim()); } catch(e) { history = []; }
         });
     }
@@ -736,7 +815,7 @@ Singleton {
     // Deleting a session removes its transcript from disk — there is no other
     // copy. Confirmation happens in the UI before either of these is called.
     function deleteSession(historySessionId) {
-        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " delete " + shellQuote(historySessionId), function() {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " delete " + shellQuote(historySessionId), function() {
             // Wiping the session being displayed leaves the chat pointing at a
             // transcript that no longer exists, so it is reset to a fresh one.
             if (sessionId === historySessionId) clearMessages();
@@ -745,13 +824,13 @@ Singleton {
     }
 
     function renameSession(historySessionId, title) {
-        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " rename " + shellQuote(historySessionId) + " " + shellQuote(title), function() {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " rename " + shellQuote(historySessionId) + " " + shellQuote(title), function() {
             loadHistory();
         });
     }
 
     function deleteAllSessions() {
-        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " delete-all", function() {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " delete-all", function() {
             clearMessages();
             loadHistory();
         });
@@ -782,13 +861,21 @@ Singleton {
         loadingSession = true;
         statusText = tr("status.loadingSession");
 
-        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " restore " + shellQuote(historySessionId), function(output) {
+        // The restore reads the transcripts of the provider that is current
+        // now. A provider switch while it runs makes the answer belong to the
+        // other CLI — it must not land in the chat that was just cleared.
+        var restoreProvider = providerId;
+
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " restore " + shellQuote(historySessionId), function(output) {
+            if (restoreProvider !== providerId) return;
             var loaded = [];
             var restored = {};
             try { restored = JSON.parse(String(output).trim()); } catch(e) {}
             if (Array.isArray(restored)) loaded = restored;
             else if (restored && Array.isArray(restored.messages)) loaded = restored.messages;
-            if (restoreSessionModel && restored && !Array.isArray(restored)) applySessionModel(restored.model, restored.effort);
+            if (restoreSessionModel && restored && !Array.isArray(restored)
+                && provider.caps && provider.caps.perSessionRestore)
+                applySessionModel(restored.model, restored.effort);
             for (var i = 0; i < loaded.length; i++) {
                 loaded[i].timestamp = Date.now();
                 var newMsgs = messages.slice();
@@ -943,7 +1030,15 @@ Singleton {
             if (root._claudeProcess && !root._gotResult) {
                 root._claudeProcess = null;
                 root.permissionQueue = [];
-                root.finishResponse(root._lastText || "(error: agent exited without a response)");
+                if (root._cancelled) {
+                    var sameProvider = root._cancelProvider === root.providerId;
+                    root._cancelled = false;
+                    root._cancelProvider = "";
+                    root.lastCost = "";
+                    if (sameProvider) root.finishResponse(root.tr("status.cancelled"));
+                } else {
+                    root.finishResponse(root._lastText || "(error: agent exited without a response)");
+                }
             }
         }
     }
@@ -952,14 +1047,45 @@ Singleton {
     // prefetch, the working directory check) run asynchronously; one that finds
     // the number changed was stopped meanwhile and must not launch the agent.
     property int _requestId: 0
+    // Set when the user pressed Stop: the run that ends after that is a
+    // cancellation, not a failure, and its error text is not shown.
+    property bool _cancelled: false
+    // The provider the cancelled run belonged to. A provider switch cancels
+    // the old run too, but its answer belongs to the chat that was just
+    // cleared — it must not appear in the new provider's chat.
+    property string _cancelProvider: ""
 
     function cancelRequest() {
         if (loadingSession) return;
         permissionQueue = [];
         _requestId++;
+        _cancelled = true;
+        _cancelProvider = providerId;
         if (_claudeProcess) {
-            _claudeProcess.signal(15);
-            _claudeProcess = null;
+            var proc = _claudeProcess;
+            // The CLI stops the current turn on a control_request/interrupt
+            // and answers with a result event; SIGTERM does not — the run
+            // would end with no result at all, and the chat would show
+            // "agent exited without a response" instead of "Cancelled".
+            // The signal stays as a fallback for a CLI that ignores the
+            // interrupt, sent only after the CLI had time to answer.
+            if (provider.caps && provider.caps.cancelViaStdin) {
+                try {
+                    proc.write(JSON.stringify({
+                        type: "control_request",
+                        request_id: "cancel_" + _requestId,
+                        request: { subtype: "interrupt", cancel_queued: true }
+                    }) + "\n");
+                    cancelCloseStdin.restart();
+                    cancelFallback.restart();
+                } catch (e) {
+                    proc.signal(15);
+                    _claudeProcess = null;
+                }
+            } else {
+                proc.signal(15);
+                _claudeProcess = null;
+            }
         }
         if (busy) {
             busy = false;
@@ -967,50 +1093,106 @@ Singleton {
         }
     }
 
+    // The CLI had its chance to answer the interrupt; if it is still running,
+    // it is stopped for good.
+    Timer {
+        id: cancelFallback
+        interval: 3000
+        onTriggered: {
+            if (root._claudeProcess) {
+                root._claudeProcess.signal(15);
+                root._claudeProcess = null;
+            }
+        }
+    }
+
+    // An interrupted run ends when its stdin closes; the CLI keeps the pipe
+    // open otherwise and the process would stay alive until the fallback
+    // signal.
+    Timer {
+        id: cancelCloseStdin
+        interval: 1500
+        onTriggered: {
+            if (root._claudeProcess)
+                root._claudeProcess.stdinEnabled = false;
+        }
+    }
+
     function callClaude(prompt) {
-        if (customWorkDir === "") { _launchClaude(prompt); return; }
+        if (customWorkDir === "") { _launchClaudeChecked(prompt); return; }
         var request = _requestId;
         // A typo in the setting should say so, not end in "agent exited".
         runQuietExit("test -d " + shellQuote(customWorkDir) + " && echo ok || echo missing", function(output) {
             if (request !== _requestId) return;
-            if (String(output).trim() === "ok") _launchClaude(prompt);
+            if (String(output).trim() === "ok") _launchClaudeChecked(prompt);
             else finishResponse(tr("error.workDirMissing") + " " + customWorkDir);
+        });
+    }
+
+    // Every provider is checked before its CLI is launched: a run without a
+    // login can only fail with auth noise, so the chat says "not signed in" and
+    // the command that fixes it instead. A success is remembered (the check is
+    // a process per provider), a failure is re-checked on the next send — after
+    // the user logs in, the very next message goes through.
+    property var _signedIn: ({})
+    function _launchClaudeChecked(prompt) {
+        if (_signedIn[providerId] === true) { _launchClaude(prompt); return; }
+        var request = _requestId;
+        runQuietExit("python3 " + shellQuote(secretsScript) + " check " + shellQuote(providerId), function(output) {
+            if (request !== _requestId) return;
+            if (String(output).trim() === "set") {
+                _signedIn[providerId] = true;
+                _launchClaude(prompt);
+            } else {
+                finishResponse(tr("error.notLoggedIn") + " (" + provider.title + "). "
+                               + tr("loginHint." + providerId));
+            }
         });
     }
 
     function _launchClaude(prompt) {
         statusText = tr(activeEffort !== "" ? "status.thinking" : "status.processing");
         _gotResult = false;
+        _cancelled = false;
+        _cancelProvider = "";
         _lastText = "";
         _toolNames = ({});
 
-        // exec: bash is replaced by claude, so Cancel's SIGTERM reaches claude itself.
-        var confirm = permissionMode !== "auto";
+        // exec: bash is replaced by the agent CLI, so Cancel's SIGTERM reaches the agent itself.
+        var confirm = providerCanAskFirst && permissionMode !== "auto";
         var prompt_ = confirm ? systemPrompt.replace(_noConfirmSentence, "") : systemPrompt;
         if (customWorkDir !== "")
             prompt_ = prompt_.replace(_stateDirSentence, "Your working directory is " + customWorkDir + ", a directory the user chose: relative paths refer to it. ");
-        var cmd = cdWorkDir + "DMS_AGENT=1 exec claude -p"
-            + " --model " + shellQuote(cliModel)
-            + (activeEffort !== "" ? " --effort " + shellQuote(activeEffort) : "")
-            + (confirm ? " --input-format stream-json --permission-mode default --permission-prompt-tool stdio"
-                       : "")
-            + " --output-format stream-json --verbose"
-            + (confirm ? "" : " --dangerously-skip-permissions")
-            + " --append-system-prompt " + shellQuote(prompt_)
-            + (sessionId ? " --resume " + shellQuote(sessionId) : "")
-            + (confirm ? " 2>/dev/null" : " 2>/dev/null <<< " + shellQuote(prompt));
+        var cmd = cdWorkDir + provider.buildCommand({
+            model: cliModel,
+            effort: activeEffort,
+            confirm: confirm,
+            systemPrompt: prompt_,
+            prompt: prompt,
+            resumeId: sessionId,
+            secretsScript: secretsScript,
+            stateDir: homeDir + "/.local/state/dms-agent",
+            q: shellQuote
+        });
 
         var props = { shellCmd: cmd };
-        if (confirm) props.input = JSON.stringify({ type: "user", message: { role: "user", content: prompt } }) + "\n";
+        // The prompt goes in through stdin for every provider whose CLI speaks
+        // stream-json input: the same pipe is what Cancel writes the
+        // interrupt into. A provider with no stdin format (Qoder, Kimi) takes
+        // the prompt as an argument and can only be stopped by a signal.
+        if (provider.stdinUserFormat)
+            props.input = JSON.stringify(provider.stdinUserFormat(prompt)) + "\n";
         var p = claudeRunner.createObject(root, props);
         _claudeProcess = p;
         p.running = true;
     }
 
     function handleStreamLine(line) {
-        var ev;
-        try { ev = JSON.parse(line); } catch(e) { return; }
+        var events = provider.parseLine(line);
+        for (var i = 0; i < events.length; i++) handleStreamEvent(events[i]);
+    }
 
+    function handleStreamEvent(ev) {
         var content = ev.message && Array.isArray(ev.message.content) ? ev.message.content : [];
 
         if (ev.type === "control_request") {
@@ -1078,21 +1260,57 @@ Singleton {
     }
 
     function handleResult(data) {
-        if (data.session_id) sessionId = data.session_id;
+        // A run the user stopped ends with a diagnostic error ("[ede_diagnostic]
+        // …"): the CLI says the turn was cut short, which is exactly what was
+        // asked for. Showing it as a failure would be noise.
+        if (_cancelled) {
+            var sameProvider = _cancelProvider === providerId;
+            _cancelled = false;
+            _cancelProvider = "";
+            lastCost = "";
+            // After a provider switch the answer belongs to the chat that was
+            // just cleared: it is dropped, not shown.
+            if (sameProvider) finishResponse(tr("status.cancelled"));
+            loadHistory();
+            return;
+        }
 
+        // A failed run echoes back whatever id it was given, including one it
+        // could not find. Keeping it would pin every later message to a session
+        // that does not exist, and each retry would fail the same way.
+        if (data.session_id && !data.is_error) sessionId = data.session_id;
+
+        // The cost line belongs to the providers that report a price. Qoder and
+        // Kimi answer with total_cost_usd 0 and empty token counts — "$0.0000
+        // (0→0 tokens)" is noise, not a price.
         lastCost = "";
-        if (data.total_cost_usd !== undefined) {
-            lastCost = "$" + data.total_cost_usd.toFixed(4);
-        }
-        if (data.usage) {
-            var inp = data.usage.input_tokens || 0;
-            var out = data.usage.output_tokens || 0;
-            lastCost += " (" + inp + "→" + out + " tokens)";
+        var costKnown = provider.caps && provider.caps.cost;
+        var cost = data.total_cost_usd;
+        var tokens = data.usage;
+        var tokensKnown = tokens && ((tokens.input_tokens || 0) + (tokens.output_tokens || 0) > 0);
+        if (costKnown && cost !== undefined && cost > 0) {
+            lastCost = "$" + cost.toFixed(4);
+            if (tokensKnown) {
+                lastCost += " (" + (tokens.input_tokens || 0) + "→" + (tokens.output_tokens || 0) + " tokens)";
+            }
         }
 
-        var response = data.result || _lastText || "";
+        var response = Providers.resultText(data, _lastText);
         finishResponse(response || "(done)");
-        loadHistory();
+        if (data.session_id && provider.caps && provider.caps.registryHistory) {
+            // Qoder and Kimi leave no scannable trace of what this chat ran, so
+            // the registry gets the id the moment it appears — and keeps it:
+            // an existing entry holds the title the user may have renamed.
+            var title = "";
+            for (var i = 0; i < messages.length; i++) {
+                if (messages[i].role === "user") { title = String(messages[i].content || ""); break; }
+            }
+            runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " register " + shellQuote(data.session_id) + " " + shellQuote(title), function() {
+                loadHistory();
+            });
+        } else {
+            loadHistory();
+        }
     }
 
     function finishResponse(text) {

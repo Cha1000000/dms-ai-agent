@@ -10,9 +10,10 @@
 </p>
 
 **DMS AI Agent** is a desktop assistant for [DankMaterialShell](https://danklinux.com) powered by
-[Claude Code](https://docs.claude.com/en/docs/claude-code). Click the pill in your bar (or hit a
-hotkey), type or say what you need — "open Telegram on workspace 2", "how much disk space is left",
-"find the PDFs I downloaded today" — and watch the agent do it, step by step.
+[Claude Code](https://docs.claude.com/en/docs/claude-code) — or, if you prefer another agent CLI,
+by CheapVibeCode, Qoder or Kimi Code (see [Providers](#providers)). Click the pill in your bar (or
+hit a hotkey), type or say what you need — "open Telegram on workspace 2", "how much disk space is
+left", "find the PDFs I downloaded today" — and watch the agent do it, step by step.
 
 It is a fork of [Francisdelca/dms-agent](https://github.com/Francisdelca/dms-agent) that fixes a few
 bugs and adds the things that were missing for daily use. It is maintained independently: the
@@ -35,6 +36,7 @@ original has not changed since April 2026, and nothing is merged from it automat
 | Chat position | always bottom-centre | left edge, centre or right edge, remembered per monitor |
 | Look | grey border | neon gradient rim, custom icon and label |
 | Sessions | mixed with your other Claude Code sessions in `$HOME` | kept in their own project dir |
+| Agent | Claude Code only | Claude Code, CheapVibeCode, Qoder or Kimi Code — pick one in the settings |
 | Staying current | press Update when you remember to | optional notification when a newer version exists |
 
 <p align="center">
@@ -46,9 +48,10 @@ original has not changed since April 2026, and nothing is merged from it automat
 
 - [DankMaterialShell](https://danklinux.com) ≥ 1.4 on **niri** (the chat itself also works on other
   compositors; the hotkey helper and "open on the focused monitor" need niri)
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI, logged in (`claude` in `PATH`).
-  **Your existing Claude Code login is what pays for this** — a Claude subscription if that is
-  how you signed in. The plugin never asks for an API key and never calls the API itself.
+- At least one agent CLI, logged in: [Claude Code](https://docs.claude.com/en/docs/claude-code)
+  (default; **your existing Claude Code login is what pays for this** — a Claude subscription if
+  that is how you signed in), or CheapVibeCode, Qoder, Kimi Code — see [Providers](#providers).
+  The plugin never asks for an API key and never calls the API itself.
 - `python3`, `bash`; `git` for installing and the optional update notice (DMS itself installs plugins
   with it)
 - Voice input: PipeWire (`pw-record`) and ~0.5–2 GB of disk for the Whisper model;
@@ -94,6 +97,7 @@ Then, in DMS:
 
 | Setting | Default | |
 |---|---|---|
+| Agent (provider) | `Claude Code` | which agent CLI runs the chat: Claude Code, CheapVibeCode, Qoder or Kimi Code — see [Providers](#providers) |
 | Model | `haiku` | `haiku`, `sonnet`, `opus` or a full id like `claude-opus-4-7`; the dropdown lists the same models as `/model` in the CLI (minus Fable), fetched from it |
 | Effort | auto | `low`, `medium`, `high`, `xhigh`, `max` (`--effort`); also switchable in the chat toolbar, levels depend on the model |
 | Per-session model | on | opening a chat from the history switches to the model and effort it was last used with (read from its transcript). A chat run on *auto* comes back with the level the CLI actually used |
@@ -115,6 +119,26 @@ Then, in DMS:
 | Language | `auto` | speech recognition **and** interface language; a fixed code is also more accurate for short phrases |
 | Warm up on open | off | load the speech model whenever the chat opens (~900 MB while it is open) so the first dictation is not clipped |
 | Whisper venv | installer's | path to a venv with `faster-whisper` |
+
+### Providers
+
+The chat runs one agent CLI at a time; switch it in **Settings → Plugins → DMS AI Agent → Agent**.
+Everything else — model list, effort levels, history — follows the provider you chose.
+
+| Provider | Sign-in | Notes |
+|---|---|---|
+| **Claude Code** (default) | your Claude Code login (run `claude` once) | the full experience: Ask first dialogs, sessions and cost in the status line |
+| **CheapVibeCode** | API key, entered once in the plugin settings (kept in `~/.local/state/dms-agent/providers.json`, mode 0600, **not** synced between machines) | the stock Claude Code CLI pointed at their gateway; their own model catalog |
+| **Qoder** | the `qodercli` login | always runs unattended (their CLI has no permission handshake in print mode); models from `--list-models` |
+| **Kimi Code** | the `kimi` login (`~/.kimi-code`) | always runs unattended; models and effort levels from `~/.kimi-code/config.toml` (read-only — the CLI owns that file) |
+
+Each provider has its own model list, its own effort levels and its own session history in the
+chat. Deleting a chat deletes its transcript as well — except Kimi Code, whose CLI has no delete
+command: the chat disappears from the list, the files stay (and the session can still be resumed
+from the CLI).
+
+The settings show whether the selected provider is signed in, with the command to run when it is
+not; the chat refuses to start on the same condition and says the same thing.
 
 ### Hotkey
 

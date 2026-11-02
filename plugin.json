@@ -2,7 +2,7 @@
     "$schema": "https://github.com/AvengeMedia/DankMaterialShell/raw/refs/heads/master/PLUGINS/plugin-schema.json",
     "id": "dmsAgent",
     "name": "DMS AI Agent",
-    "description": "AI desktop assistant powered by Claude Code: live tool progress, voice input, per-monitor chat",
+    "description": "AI desktop assistant: Claude Code (default), CheapVibeCode, Qoder or Kimi Code — live tool progress, voice input, per-monitor chat",
     "version": "0.5.0",
     "license": "MIT",
     "author": "francis, Cha1000000",
@@ -12,6 +12,6 @@
     "component": "./DmsAgent.qml",
     "settings": "./DmsAgentSettings.qml",
     "requires_dms": ">=1.4.0",
-    "dependencies": ["bash", "claude", "python3", "pipewire"],
+    "dependencies": ["bash", "python3", "pipewire"],
     "permissions": ["settings_read", "settings_write"]
 }

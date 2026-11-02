@@ -58,7 +58,7 @@ bold "Checking dependencies"
 have git || fail "git is required: $(pkg_hint git git)"
 have python3 || fail "python3 is required: $(pkg_hint python python3)"
 have dms || fail "DankMaterialShell (dms) is not installed — see https://danklinux.com"
-have claude && ok "claude CLI found" || warn "claude CLI not found — the agent needs it: https://docs.claude.com/en/docs/claude-code"
+have claude && ok "claude CLI found" || warn "claude CLI not found — the default agent (Claude Code) needs it: https://docs.claude.com/en/docs/claude-code (other providers: Plugin settings → Agent)"
 have niri || warn "niri not found — the hotkey and 'open on focused monitor' need niri; bind 'dms ipc call dmsAgent toggle' manually"
 if [ "$WITH_VOICE" = 1 ] && ! have pw-record; then
     warn "pw-record missing (voice input needs PipeWire): $(pkg_hint pipewire pipewire-bin)"
@@ -167,5 +167,8 @@ Next steps in DMS:
   2. Settings → Bar → add the "DMS AI Agent" widget where you want the pill
   3. Plugin settings: pill label, hotkey, Whisper model and language
 
-Make sure the claude CLI is logged in (run 'claude' once in a terminal).
+Make sure the agent CLI you will use is logged in — for the default Claude Code
+that is: run 'claude' once in a terminal. Other providers (CheapVibeCode,
+Qoder, Kimi Code) are switched in Plugin settings → Agent; each signs in on its
+own (their own CLI login or an API key).
 EOF
