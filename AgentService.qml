@@ -75,6 +75,15 @@ Singleton {
         return m ? m.label : id;
     }
 
+    // Where the chosen model sits in the catalog — the picker scrolls to it.
+    // -1 when the catalog does not list it.
+    function currentModelIndex() {
+        for (let i = 0; i < models.length; i++) {
+            if (isCurrentModel(models[i])) return i;
+        }
+        return -1;
+    }
+
     // At most once an hour: the CLI updates itself while the shell keeps running.
     function refreshModels() {
         if (Date.now() - _modelsFetchedAt < 3600000) return;
@@ -88,14 +97,11 @@ Singleton {
                 const list = JSON.parse(output);
                 if (Array.isArray(list) && list.length > 0) {
                     models = list;
-                    // CVC-style gateways only take full ids from their catalog, so a
-                    // saved id left from another provider ("opus", "Qwen3.8-Flash")
-                    // would be rejected. Only a bare alias ("haiku") is left alone
-                    // when the provider accepts aliases — every other id must be on
-                    // the list to survive.
-                    const saved = String(claudeModel);
-                    const aliasLike = !!provider.aliasModels && /^[a-z0-9-]+$/i.test(saved);
-                    if (!aliasLike && !models.some(isCurrentModel)) {
+                    // A saved id left from another provider ("opus",
+                    // "Qwen3.8-Flash") would be rejected by --model. It survives
+                    // only when the new catalog still lists it (or the aliases
+                    // it can still resolve) — providers.keepsModel() decides.
+                    if (!Providers.keepsModel(provider, models, String(claudeModel))) {
                         const hint = String(claudeModel).toLowerCase();
                         const byHint = models.find(x => hint && String(x.id).toLowerCase().indexOf(hint) >= 0);
                         const first = models.find(x => String(x.id).indexOf("group") < 0) || models[0];

@@ -28,6 +28,10 @@ Item {
     // DMS popouts. Menus, popups and dialogs are upper bounds and still shrink to
     // fit a narrow chat.
     readonly property real menuWidth: 230
+    // Upper bound for a scrollable menu: the list is capped by the space
+    // above the input card, so a long model catalog scrolls instead of
+    // running off the screen.
+    readonly property real menuMaxHeight: Math.max(rowHeight * 3, Math.min(height * 0.8, height - inputCard.height - Theme.spacingL))
     readonly property real effortMenuWidth: 150
     readonly property real workDirPopupWidth: 380
     readonly property real dialogWidth: 340
@@ -908,26 +912,57 @@ Item {
         id: modelDropdown; visible: false
         anchors.bottom: inputCard.top; anchors.bottomMargin: chatRoot.gap
         anchors.left: inputCard.left; anchors.leftMargin: Theme.spacingS
-        width: Math.min(chatRoot.width - Theme.spacingL, chatRoot.menuWidth); height: modelCol.height + Theme.spacingS; radius: Theme.cornerRadius
+        // A provider with a long catalog (CVC, 9Router) has more models than fit
+        // on the screen, so the list is scrollable and its height is capped by
+        // the space above the input card. The height comes from the number of
+        // models, not from the list's contentHeight: the list fills the
+        // dropdown, so its contentHeight would be a circular dependency.
+        width: Math.min(chatRoot.width - Theme.spacingL, chatRoot.menuWidth)
+        height: Math.min(AgentService.models.length * chatRoot.rowHeight + Theme.spacingS,
+                         chatRoot.menuMaxHeight)
+        radius: Theme.cornerRadius
         color: AgentTheme.surfaceContainerHighest
         z: 20
+        clip: true
 
-        Column {
-            id: modelCol; anchors.top: parent.top; anchors.topMargin: Theme.spacingXS
-            anchors.left: parent.left; anchors.right: parent.right
-            Repeater {
-                model: AgentService.models
-                Rectangle {
-                    width: modelCol.width; height: chatRoot.rowHeight; radius: Theme.cornerRadius - Theme.spacingXS
-                    color: optArea.containsMouse ? Theme.withAlpha(AgentTheme.hoverTint, 0.3) : "transparent"
-                    RowLayout {
-                        anchors.fill: parent; anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM; spacing: chatRoot.gap
-                        StyledText { text: modelData.label; font.pixelSize: Theme.fontSizeSmall; font.weight: AgentService.isCurrentModel(modelData) ? Font.Bold : Font.Normal; color: AgentService.isCurrentModel(modelData) ? AgentTheme.surfaceText : AgentTheme.surfaceVariantText }
-                        StyledText { text: AgentService.modelDesc(modelData); font.pixelSize: Theme.fontSizeSmall; color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5) }
-                        Item { Layout.fillWidth: true }
-                        DankIcon { visible: AgentService.isCurrentModel(modelData); name: "check"; color: AgentTheme.primary; size: chatRoot.iconSmall }
+        onVisibleChanged: {
+            if (!visible) return;
+            // Open on the model that is chosen — with a hundred rows the current
+            // one is usually off-screen.
+            Qt.callLater(function() {
+                var i = AgentService.currentModelIndex();
+                if (i >= 0) modelList.positionViewAtIndex(i, ListView.Contain);
+            });
+        }
+
+        DankListView {
+            id: modelList
+            anchors.fill: parent
+            anchors.topMargin: Theme.spacingXS
+            anchors.bottomMargin: Theme.spacingXS
+            clip: true
+            spacing: 0
+            model: AgentService.models
+            delegate: Rectangle {
+                width: ListView.view.width; height: chatRoot.rowHeight; radius: Theme.cornerRadius - Theme.spacingXS
+                color: optArea.containsMouse ? Theme.withAlpha(AgentTheme.hoverTint, 0.3) : "transparent"
+                RowLayout {
+                    anchors.fill: parent; anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM; spacing: chatRoot.gap
+                    StyledText { text: modelData.label; font.pixelSize: Theme.fontSizeSmall; font.weight: AgentService.isCurrentModel(modelData) ? Font.Bold : Font.Normal; color: AgentService.isCurrentModel(modelData) ? AgentTheme.surfaceText : AgentTheme.surfaceVariantText }
+                    StyledText { text: AgentService.modelDesc(modelData); font.pixelSize: Theme.fontSizeSmall; color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5) }
+                    Item { Layout.fillWidth: true }
+                    DankIcon { visible: AgentService.isCurrentModel(modelData); name: "check"; color: AgentTheme.primary; size: chatRoot.iconSmall }
+                }
+                MouseArea {
+                    id: optArea; anchors.fill: parent; hoverEnabled: true
+                    onClicked: { AgentService.chooseModel(modelData.id); modelDropdown.visible = false; }
+                    // The wheel is handled here: under Quickshell on Wayland the
+                    // WheelHandler of the list never receives it (the same
+                    // reason the chat uses a MouseArea for Ctrl+wheel).
+                    onWheel: function(wheel) {
+                        modelList.contentY -= wheel.angleDelta.y / 120 * chatRoot.rowHeight;
+                        wheel.accepted = true;
                     }
-                    MouseArea { id: optArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.chooseModel(modelData.id); modelDropdown.visible = false; } }
                 }
             }
         }
