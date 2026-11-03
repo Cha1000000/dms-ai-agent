@@ -300,6 +300,20 @@ function all() {
     return Object.keys(PROVIDERS).map(function (k) { return PROVIDERS[k]; });
 }
 
+// The name in the chat's chip: the bare model name, cut to a length the chip
+// can show. A gateway lists the vendor in front of the name ("OpenAI · GPT 6
+// Astra"), and the whole name pushed the buttons on the toolbar row out of
+// the window. The picker keeps the full name; the chip shows the model.
+function chipLabel(label, max) {
+    var text = String(label === undefined || label === null ? "" : label).trim();
+    if (!text) return "";
+    var sep = text.indexOf("·");
+    if (sep >= 0) text = text.slice(sep + 1).trim();
+    var limit = max || 18;
+    if (text.length <= limit) return text;
+    return text.slice(0, limit - 1).replace(/\s+$/, "") + "…";
+}
+
 // Whether a saved model id still fits the catalog that was just fetched.
 // The id survives when the catalog offers it — by its id or by the model it
 // resolves to. A bare alias ("opus") survives only while the catalog still

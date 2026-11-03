@@ -75,6 +75,13 @@ Singleton {
         return m ? m.label : id;
     }
 
+    // The name in the chat's chip: the bare model name, cut to what fits.
+    // A gateway lists the vendor in front of the name ("OpenAI · GPT 6
+    // Astra"), and the whole name pushed the buttons out of the window.
+    function chipLabel(id) {
+        return Providers.chipLabel(modelLabel(id), 18);
+    }
+
     // Where the chosen model sits in the catalog — the picker scrolls to it.
     // -1 when the catalog does not list it.
     function currentModelIndex() {

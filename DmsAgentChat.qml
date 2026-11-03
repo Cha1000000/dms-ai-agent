@@ -44,6 +44,11 @@ Item {
     readonly property real attachmentMaxWidth: 150
     readonly property real folderChipMaxWidth: 130
     readonly property real folderNameMaxWidth: 90
+    // The model chip must not push the buttons on the toolbar row out of the
+    // window: the name is cut (Providers.chipLabel) and the chip itself is
+    // capped in width.
+    readonly property real modelChipMaxWidth: 160
+    readonly property real modelNameMaxWidth: 130
 
     signal escapePressed()
     // Ctrl + left button drag moves the chat; the window's owner does the moving.
@@ -583,17 +588,35 @@ Item {
 
                     // Model dropdown
                     Rectangle {
-                        width: modelRow.implicitWidth + Theme.spacingL; height: chatRoot.chipSize; radius: height / 2
-                        Layout.preferredWidth: width; Layout.rightMargin: Theme.spacingXS
+                        // The chip is as wide as the name and never wider than the
+                        // cap: a long gateway name cannot push the buttons after
+                        // it out of the window.
+                        Layout.preferredWidth: Math.min(modelRow.implicitWidth + Theme.spacingL, chatRoot.modelChipMaxWidth)
+                        Layout.maximumWidth: chatRoot.modelChipMaxWidth
+                        Layout.minimumWidth: chatRoot.iconSmall * 2
+                        height: chatRoot.chipSize; radius: height / 2
+                        Layout.rightMargin: Theme.spacingXS
                         color: modelDropArea.containsMouse || modelDropdown.visible ? Theme.withAlpha(AgentTheme.hoverTint, 0.3) : "transparent"
 
                         Row {
-                            id: modelRow; anchors.centerIn: parent; spacing: Theme.spacingXS
-                            StyledText { text: AgentService.modelLabel(AgentService.claudeModel); font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            id: modelRow
+                            anchors.centerIn: parent; spacing: Theme.spacingXS
+                            StyledText {
+                                // NoWrap makes implicitWidth the natural width of the
+                                // name; the cap cuts the text, not the chip.
+                                width: Math.min(implicitWidth, chatRoot.modelNameMaxWidth)
+                                text: AgentService.chipLabel(AgentService.claudeModel)
+                                wrapMode: Text.NoWrap
+                                elide: Text.ElideRight
+                                font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceVariantText
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
                             DankIcon { name: modelDropdown.visible ? "expand_less" : "expand_more"; color: AgentTheme.surfaceVariantText; size: chatRoot.iconSmall; anchors.verticalCenter: parent.verticalCenter }
                         }
 
                         MouseArea { id: modelDropArea; anchors.fill: parent; hoverEnabled: true; onClicked: { effortDropdown.visible = false; workDirPopup.visible = false; modelDropdown.visible = !modelDropdown.visible; if (modelDropdown.visible) AgentService.refreshModels(); } }
+                        // The full name, vendor and all: the chip shows only the model.
+                        TipArea { text: AgentService.modelLabel(AgentService.claudeModel) }
                     }
 
                     // Effort
@@ -948,8 +971,23 @@ Item {
                 color: optArea.containsMouse ? Theme.withAlpha(AgentTheme.hoverTint, 0.3) : "transparent"
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM; spacing: chatRoot.gap
-                    StyledText { text: modelData.label; font.pixelSize: Theme.fontSizeSmall; font.weight: AgentService.isCurrentModel(modelData) ? Font.Bold : Font.Normal; color: AgentService.isCurrentModel(modelData) ? AgentTheme.surfaceText : AgentTheme.surfaceVariantText }
-                    StyledText { text: AgentService.modelDesc(modelData); font.pixelSize: Theme.fontSizeSmall; color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5) }
+                    // The full name, with the vendor in front of it — the list has
+                    // room for it, the chip has not.
+                    StyledText {
+                        text: modelData.label
+                        elide: Text.ElideRight
+                        Layout.maximumWidth: Math.floor(ListView.view.width * 0.55)
+                        font.pixelSize: Theme.fontSizeSmall
+                        font.weight: AgentService.isCurrentModel(modelData) ? Font.Bold : Font.Normal
+                        color: AgentService.isCurrentModel(modelData) ? AgentTheme.surfaceText : AgentTheme.surfaceVariantText
+                    }
+                    StyledText {
+                        text: AgentService.modelDesc(modelData)
+                        elide: Text.ElideRight
+                        Layout.maximumWidth: Math.floor(ListView.view.width * 0.35)
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5)
+                    }
                     Item { Layout.fillWidth: true }
                     DankIcon { visible: AgentService.isCurrentModel(modelData); name: "check"; color: AgentTheme.primary; size: chatRoot.iconSmall }
                 }

@@ -73,6 +73,8 @@ if (fn === "kimi_caps") {
     out = PROVIDERS.cc9.buildCommand(Object.assign({
         q: (s) => "'" + String(s).replace(/'/g, "'\\''") + "'",
     }, arg));
+} else if (fn === "chipLabel") {
+    out = chipLabel(arg.label, arg.max);
 } else if (fn === "keepsModel") {
     out = keepsModel(PROVIDERS[arg.provider], arg.models, arg.saved);
 } else {
