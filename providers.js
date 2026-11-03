@@ -39,7 +39,7 @@ PROVIDERS.claude = {
         perSessionRestore: true
     },
 
-    // opts: { model, effort, confirm, systemPrompt, prompt, resumeId }
+    // opts: { model, effort, confirm, systemPrompt, prompt, resumeId, cli }
     buildCommand: function (opts) {
         var confirm = !!opts.confirm;
         // The prompt always comes through stdin, never as an argument and never
@@ -47,7 +47,7 @@ PROVIDERS.claude = {
         // stops the current turn on a control_request/interrupt, and it only
         // reads that from a live pipe — with the prompt in a heredoc the stdin
         // is already closed and the interrupt never arrives.
-        var cmd = "DMS_AGENT=1 exec claude -p"
+        var cmd = "DMS_AGENT=1 exec " + (opts.cli || "claude") + " -p"
             + " --model " + opts.q(opts.model)
             + (opts.effort ? " --effort " + opts.q(opts.effort) : "")
             + " --input-format stream-json"
@@ -108,6 +108,36 @@ PROVIDERS.cvc = {
     parseLine: PROVIDERS.claude.parseLine,
     canUseTool: false,
     requiresKey: true,
+};
+// 9Router (cc9) is the stock claude CLI run through the cc9 wrapper: the CLI
+// pointed at the local 9Router gateway, with its own config dir. It is a
+// separate provider because the gateway catalog is only visible when that
+// wrapper is used: DMS started from systemd inherits no cc9 environment, so
+// the stock CLI on PATH reports the five native Claude models instead of the
+// gateway's aggregate. The wrapper speaks the same protocol (checked live
+// 2026-11-03: the can_use_tool handshake and the --model ids both work), so
+// the only difference is the binary that is run and the catalog it reports.
+PROVIDERS.cc9 = {
+    id: "cc9",
+    title: "9Router (cc9)",
+    caps: {
+        askFirst: true,
+        cost: true,
+        stdinEnabled: true,
+        cancelViaStdin: true,
+        perSessionRestore: true
+    },
+
+    buildCommand: function (opts) {
+        return PROVIDERS.claude.buildCommand(Object.assign({}, opts, {cli: "cc9"}));
+    },
+
+    stdinUserFormat: PROVIDERS.claude.stdinUserFormat,
+    parseLine: PROVIDERS.claude.parseLine,
+    canUseTool: true,
+    // The gateway's own presets: the bare aliases resolve to the Combo, and
+    // the Combo must not be in Jarvis.
+    aliasModels: false,
 };
 // Qoder is its own CLI (qodercli). The query is a positional argument (not
 // stdin), the stream is the claude stream-json shape nearly as-is, and
@@ -268,4 +298,26 @@ function byId(id) {
 
 function all() {
     return Object.keys(PROVIDERS).map(function (k) { return PROVIDERS[k]; });
+}
+
+// Whether a saved model id still fits the catalog that was just fetched.
+// The id survives when the catalog offers it — by its id or by the model it
+// resolves to. A bare alias ("opus") survives only while the catalog still
+// lists the aliases: a harness aggregate (cc9 + 9Router) has none, and there
+// "opus" is the Combo, which must not be in Jarvis. Live 2026-11-03: with the
+// aggregate in the picker a leftover id of another provider ("kimi-k2.8-preview")
+// looked like an alias (letters and dashes only) and kept the picker stuck on
+// a model the CLI would reject.
+function keepsModel(provider, models, saved) {
+    if (!saved) return false;
+    var list = models || [];
+    for (var i = 0; i < list.length; i++) {
+        var m = list[i];
+        if (m.id === saved || (m.resolved && m.resolved === saved)) return true;
+    }
+    var aliasesOffered = list.some(function (m) {
+        return m.id === "opus" || m.id === "sonnet" || m.id === "haiku";
+    });
+    return !!(provider && provider.aliasModels) && aliasesOffered
+        && /^[a-z0-9-]+$/i.test(saved);
 }

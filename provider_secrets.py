@@ -10,6 +10,7 @@ claude CLI pointed at their gateway).
 """
 import json
 import os
+import shutil
 import stat
 import sys
 
@@ -21,6 +22,8 @@ STORE_PATH = os.path.join(
 if os.environ.get("PROVIDER_SECRETS_STORE"):
     STORE_PATH = os.environ["PROVIDER_SECRETS_STORE"]
 CVC_BASE_URL = "https://ru.cheapvibecode.ru"
+# The local gateway of the cc9 wrapper (see ~/.local/bin/cc9).
+CC9_ROUTER_URL = "http://localhost:20128"
 
 
 def _load():
@@ -106,12 +109,32 @@ def test_cvc_key():
         return "fail: %s" % e
 
 
+def cc9_ready():
+    """Whether the cc9 wrapper can run: the wrapper is on PATH and the 9Router
+    gateway answers. The wrapper falls back to Tokenator on its own when the
+    gateway is down, so a down gateway is not a hard "no" — but without the
+    wrapper there is nothing to run at all."""
+    if not shutil.which("cc9"):
+        return False
+    try:
+        import urllib.request
+        req = urllib.request.Request(CC9_ROUTER_URL + "/api/version")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return 200 <= resp.status < 300
+    except Exception:
+        # The gateway is down: the wrapper falls back to Tokenator, so the
+        # provider is still usable.
+        return True
+
+
 def is_signed_in(provider):
     """Whether the provider can run at all: the key store has a key, or the
     CLI has a login. A probe that cannot tell counts as signed in — only a
     definite "no credentials" stops the chat and points at the login command."""
     if provider == "cvc":
         return bool(get_api_key("cvc"))
+    if provider == "cc9":
+        return cc9_ready()
     if provider == "kimi":
         import glob
         return bool(glob.glob(os.path.expanduser("~/.kimi-code/credentials/*.json")))

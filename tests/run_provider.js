@@ -60,6 +60,21 @@ if (fn === "kimi_caps") {
         requiresKey: !!p.requiresKey,
         stdinUserFormat: p.stdinUserFormat ? p.stdinUserFormat("hi") : null,
     };
+} else if (fn === "cc9_caps") {
+    out = {
+        id: PROVIDERS.cc9.id,
+        title: PROVIDERS.cc9.title,
+        caps: PROVIDERS.cc9.caps,
+        canUseTool: PROVIDERS.cc9.canUseTool,
+        aliasModels: PROVIDERS.cc9.aliasModels,
+        requiresKey: !!PROVIDERS.cc9.requiresKey,
+    };
+} else if (fn === "cc9_buildCommand") {
+    out = PROVIDERS.cc9.buildCommand(Object.assign({
+        q: (s) => "'" + String(s).replace(/'/g, "'\\''") + "'",
+    }, arg));
+} else if (fn === "keepsModel") {
+    out = keepsModel(PROVIDERS[arg.provider], arg.models, arg.saved);
 } else {
     console.error("unknown fn " + fn);
     process.exit(2);

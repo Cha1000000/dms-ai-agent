@@ -33,7 +33,7 @@ elif "--provider" in argv:
     del argv[i:i + 2]
 # The known providers. An unknown one is rejected: answering with the claude
 # catalog would be a wrong answer with a confident face.
-KNOWN_PROVIDERS = ("claude", "cvc", "qoder", "kimi")
+KNOWN_PROVIDERS = ("claude", "cvc", "cc9", "qoder", "kimi")
 if provider not in KNOWN_PROVIDERS:
     print("models.py: unknown provider %r (known: %s)"
           % (provider, ", ".join(KNOWN_PROVIDERS)), file=sys.stderr)
@@ -45,21 +45,31 @@ CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.
 SKIP_IDS = {"default"}
 SKIP_PREFIXES = ("fable", "claude-fable")
 # When the claude CLI is a harness wrapper (cc9 + 9Router), its catalog is a
-# gateway aggregate: group headers and combo presets that are not models, plus
-# every gateway under its own namespace ("cvc/…", "ag/…", "tk/…"). None of that
-# is a Claude Code model: those are listed by their own providers (CVC reads its
-# catalog from the gateway). Caught live 2026-11-02 — with 9Router on PATH the
-# Claude picker showed 101 gateway ids and no native Claude model at all.
-CC9_IDS = {"claude-cowork-combo", "free-models", "tk-free", "tokenator-paid"}
-CC9_PREFIXES = ("cc9-group:", "tk/")
+# gateway aggregate: section headers ("cc9-group:*"), the Combo presets and
+# the Tokenator namespace are not models and must not reach the picker
+# ("Никаких Комбо и моделей Токенатора в Джарвисе быть не должно"). Every
+# other id of the aggregate IS a model of the harness the user runs — the one
+# their --model takes — so they stay. Caught live 2026-11-03: the filter used
+# to drop every id with a slash, and the picker was left with three aliases
+# while the harness offered 181 models.
+COMBO_IDS = {"claude-cowork-combo", "free-models", "tk-free", "tokenator-paid"}
+GROUP_PREFIX = "cc9-group:"
+# tk/ is the Tokenator namespace of the 9Router.
+TOKENATOR_PREFIX = "tk/"
 
 
-def native_claude_id(mid):
-    if not mid or "/" in mid:
+def claude_model_id(mid):
+    if not mid:
         return False
-    if mid in SKIP_IDS or mid in CC9_IDS or mid.startswith(SKIP_PREFIXES):
+    if mid in SKIP_IDS or mid in COMBO_IDS:
         return False
-    return not mid.startswith(CC9_PREFIXES)
+    if mid.startswith(SKIP_PREFIXES) or mid.startswith(GROUP_PREFIX):
+        return False
+    if mid.startswith(TOKENATOR_PREFIX):
+        return False
+    # Fable stays out of the picker, wherever it comes from (the native catalog
+    # and the gateways' namespaces alike).
+    return "fable" not in mid
 
 
 # The bare --model aliases of Claude Code. A harness wrapper's catalog may not
@@ -76,6 +86,13 @@ CLAUDE_ALIASES = [
 
 
 def with_claude_aliases(models):
+    """Add the bare "opus"/"sonnet"/"haiku" aliases to a native catalog.
+
+    A harness aggregate (cc9 + 9Router) gets none: there the aliases are its
+    own presets, and they resolve to the Combo — which must not be in Jarvis.
+    """
+    if any("/" in m["id"] for m in models):
+        return models
     have = {m["id"] for m in models}
     return models + [m for m in CLAUDE_ALIASES if m["id"] not in have]
 # Same set the Claude Code CLI exposes as --effort; the CVC gateway forwards it
@@ -87,15 +104,15 @@ CVC_EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 QODER_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultracode"]
 
 
-def ask_cli():
+def ask_cli(cli="claude"):
     request = json.dumps({"type": "control_request", "request_id": "models",
                           "request": {"subtype": "initialize"}})
     # No hooks, no MCP servers, no session file: only the model list is needed.
     out = subprocess.run(
-        ["claude", "-p", "--no-session-persistence", "--strict-mcp-config",
+        [cli, "-p", "--no-session-persistence", "--strict-mcp-config",
          "--settings", '{"disableAllHooks":true}',
          "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],
-        input=request + "\n", capture_output=True, text=True, timeout=30,
+        input=request + "\n", capture_output=True, text=True, timeout=60,
     ).stdout
     for line in out.splitlines():
         try:
@@ -120,6 +137,8 @@ def map_cvc_models(payload):
             continue
         mid = m.get("id")
         if not mid or mid in SKIP_IDS or str(mid).startswith(SKIP_PREFIXES):
+            continue
+        if "fable" in str(mid):
             continue
         out.append({
             "id": mid,
@@ -205,20 +224,36 @@ def ask_kimi():
         return f.read()
 
 
-def fetch_models():
+def fetch_models_for(provider):
     if provider == "cvc":
         return map_cvc_models(ask_cvc())
     if provider == "qoder":
         return map_qoder_models(ask_qoder())
     if provider == "kimi":
         return map_kimi_models(ask_kimi())
+    if provider == "cc9":
+        # The wrapper's catalog — the gateway's aggregate, not the native
+        # Claude one. The bare aliases are not added: in that catalog they are
+        # the wrapper's own presets and resolve to the Combo.
+        return [
+            {"id": m["value"], "label": m.get("displayName") or m["value"],
+             "resolved": m.get("resolvedModel", m["value"]),
+             "desc": m.get("description", ""),
+             "efforts": m.get("supportedEffortLevels") or []}
+            for m in ask_cli("cc9")
+            if claude_model_id(m["value"])
+        ]
     return with_claude_aliases([
         {"id": m["value"], "label": m.get("displayName") or m["value"],
          "resolved": m.get("resolvedModel", m["value"]), "desc": m.get("description", ""),
          "efforts": m.get("supportedEffortLevels") or []}
         for m in ask_cli()
-        if native_claude_id(m["value"])
+        if claude_model_id(m["value"])
     ])
+
+
+def fetch_models():
+    return fetch_models_for(provider)
 
 
 def main():

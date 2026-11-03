@@ -59,6 +59,7 @@ var STRINGS = {
         "error.notLoggedIn": "Not signed in",
         "loginHint.claude": "Run 'claude' in a terminal and sign in.",
         "loginHint.cvc": "Add the API key in Settings → Provider.",
+        "loginHint.cc9": "Start the 9Router gateway and make sure 'cc9' is on PATH.",
         "loginHint.qoder": "Run 'qodercli login' in a terminal.",
         "loginHint.kimi": "Run 'kimi login' in a terminal.",
 
@@ -149,6 +150,7 @@ var STRINGS = {
         "error.notLoggedIn": "Нет входа",
         "loginHint.claude": "Запустите 'claude' в терминале и войдите.",
         "loginHint.cvc": "Добавьте API-ключ в Настройках → Provider.",
+        "loginHint.cc9": "Запустите шлюз 9Router и проверьте, что 'cc9' есть в PATH.",
         "loginHint.qoder": "Запустите 'qodercli login' в терминале.",
         "loginHint.kimi": "Запустите 'kimi login' в терминале.",
 

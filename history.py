@@ -25,18 +25,21 @@ action = argv[0] if argv else "list"
 # The known providers. An unknown one is rejected: silently answering with the
 # claude catalog (models.py) or with an empty history (here) would make the
 # same wrong input give two different answers.
-KNOWN_PROVIDERS = ("claude", "cvc", "qoder", "kimi")
+KNOWN_PROVIDERS = ("claude", "cvc", "cc9", "qoder", "kimi")
 if provider not in KNOWN_PROVIDERS:
     print("history.py: unknown provider %r (known: %s)"
           % (provider, ", ".join(KNOWN_PROVIDERS)), file=sys.stderr)
     sys.exit(2)
 # Transcripts of the stock claude CLI (also run against the CVC gateway).
-TRANSCRIPT_PROVIDERS = ("claude", "cvc")
+TRANSCRIPT_PROVIDERS = ("claude", "cvc", "cc9")
 # Every CLI stores sessions under a slug of the working directory
 # (non-alphanumerics -> "-"); the agent and this script run from the same one.
 TRANSCRIPT_ROOTS = {
     "claude": "~/.claude/projects",
     "cvc": "~/.claude/projects",
+    # cc9 keeps its own config dir, but the transcripts live in the shared
+    # store it symlinks (~/.claude-cc9/projects -> ~/.claude/projects).
+    "cc9": "~/.claude/projects",
     "qoder": "~/.qoder/projects",
 }
 
