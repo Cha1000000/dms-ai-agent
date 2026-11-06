@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.png" alt="DMS AI Agent — Claude Code in your DankMaterialShell bar" width="100%">
+  <img src="assets/banner.png" alt="DMS AI Agent — your agent CLI in your DankMaterialShell bar" width="100%">
 </p>
 
 <p align="center">
@@ -11,9 +11,11 @@
 
 **DMS AI Agent** is a desktop assistant for [DankMaterialShell](https://danklinux.com) powered by
 [Claude Code](https://docs.claude.com/en/docs/claude-code) — or, if you prefer another agent CLI,
-by CheapVibeCode, Qoder or Kimi Code (see [Providers](#providers)). Click the pill in your bar (or
-hit a hotkey), type or say what you need — "open Telegram on workspace 2", "how much disk space is
-left", "find the PDFs I downloaded today" — and watch the agent do it, step by step.
+by CheapVibeCode, 9Router, Qoder or Kimi Code, or by any agent you add yourself through the provider
+registry: an ACP agent such as Gemini or OpenCode, Codex, or an OpenAI-compatible gateway (see
+[Providers](#providers)). Click the pill in your bar (or hit a hotkey), type or say what you need —
+"open Telegram on workspace 2", "how much disk space is left", "find the PDFs I downloaded today" —
+and watch the agent do it, step by step.
 
 It is a fork of [Francisdelca/dms-agent](https://github.com/Francisdelca/dms-agent) that fixes a few
 bugs and adds the things that were missing for daily use. It is maintained independently: the
@@ -36,7 +38,7 @@ original has not changed since April 2026, and nothing is merged from it automat
 | Chat position | always bottom-centre | left edge, centre or right edge, remembered per monitor |
 | Look | grey border | neon gradient rim, custom icon and label |
 | Sessions | mixed with your other Claude Code sessions in `$HOME` | kept in their own project dir |
-| Agent | Claude Code only | Claude Code, CheapVibeCode, Qoder or Kimi Code — pick one in the settings |
+| Agent | Claude Code only | Claude Code, CheapVibeCode, 9Router, Qoder or Kimi Code, plus any ACP agent, Codex or OpenAI-compatible gateway you add yourself |
 | Staying current | press Update when you remember to | optional notification when a newer version exists |
 
 <p align="center">
@@ -48,10 +50,13 @@ original has not changed since April 2026, and nothing is merged from it automat
 
 - [DankMaterialShell](https://danklinux.com) ≥ 1.4 on **niri** (the chat itself also works on other
   compositors; the hotkey helper and "open on the focused monitor" need niri)
-- At least one agent CLI, logged in: [Claude Code](https://docs.claude.com/en/docs/claude-code)
+- At least one agent: a CLI you are signed in to — [Claude Code](https://docs.claude.com/en/docs/claude-code)
   (default; **your existing Claude Code login is what pays for this** — a Claude subscription if
-  that is how you signed in), or CheapVibeCode, Qoder, Kimi Code — see [Providers](#providers).
-  The plugin never asks for an API key and never calls the API itself.
+  that is how you signed in), or CheapVibeCode, 9Router, Qoder or Kimi Code — or a provider you add
+  yourself, such as an ACP agent or a gateway with a key (see [Providers](#providers)). Logins
+  belong to the CLI; keys for CheapVibeCode and for a custom OpenAI gateway are stored by the
+  plugin itself in `~/.local/state/dms-agent/providers.json` (0600) and never in the synced plugin
+  settings.
 - `python3`, `bash`; `git` for installing and the optional update notice (DMS itself installs plugins
   with it)
 - Voice input: PipeWire (`pw-record`) and ~0.5–2 GB of disk for the Whisper model;
@@ -97,8 +102,8 @@ Then, in DMS:
 
 | Setting | Default | |
 |---|---|---|
-| Agent (provider) | `Claude Code` | which agent CLI runs the chat: Claude Code, CheapVibeCode, Qoder or Kimi Code — see [Providers](#providers) |
-| Model | `haiku` | `haiku`, `sonnet`, `opus` or a full id like `claude-opus-4-7`; the dropdown lists the same models as `/model` in the CLI (minus Fable), fetched from it |
+| Agent (provider) | `Claude Code` | which agent CLI runs the chat: the five built-in ones, or any you add yourself in the registry — see [Providers](#providers) |
+| Model | `haiku` | `haiku`, `sonnet`, `opus` or a full id like `claude-opus-4-7`; the dropdown lists the provider's own catalog — for Claude Code the same models as `/model` in the CLI (minus Fable), fetched from it |
 | Effort | auto | `low`, `medium`, `high`, `xhigh`, `max` (`--effort`); also switchable in the chat toolbar, levels depend on the model |
 | Per-session model | on | opening a chat from the history switches to the model and effort it was last used with (read from its transcript). A chat run on *auto* comes back with the level the CLI actually used |
 | System Prompt | built-in | your own instructions for the agent |
@@ -123,22 +128,60 @@ Then, in DMS:
 ### Providers
 
 The chat runs one agent CLI at a time; switch it in **Settings → Plugins → DMS AI Agent → Agent**.
-Everything else — model list, effort levels, history — follows the provider you chose.
+The model list, effort levels and history all follow the provider you picked.
 
 | Provider | Sign-in | Notes |
 |---|---|---|
 | **Claude Code** (default) | your Claude Code login (run `claude` once) | the full experience: Ask first dialogs, sessions and cost in the status line |
-| **CheapVibeCode** | API key, entered once in the plugin settings (kept in `~/.local/state/dms-agent/providers.json`, mode 0600, **not** synced between machines) | the stock Claude Code CLI pointed at their gateway; their own model catalog |
+| **CheapVibeCode** | API key, entered once in the plugin settings | the stock Claude Code CLI pointed at their gateway; their own model catalog; Ask first is off — the handshake stalls on that gateway |
+| **9Router (cc9)** | the `cc9` wrapper, already signed in | the stock CLI run through the wrapper, so the catalog is the gateway's aggregate rather than the five native Claude models |
 | **Qoder** | the `qodercli` login | always runs unattended (their CLI has no permission handshake in print mode); models from `--list-models` |
 | **Kimi Code** | the `kimi` login (`~/.kimi-code`) | always runs unattended; models and effort levels from `~/.kimi-code/config.toml` (read-only — the CLI owns that file) |
+
+The settings show whether the selected provider is signed in, with the command to run when it is
+not; the chat refuses to start on the same condition and says the same thing. A provider that was
+deleted or mistyped is reported as unknown — the chat never falls back to Claude silently.
 
 Each provider has its own model list, its own effort levels and its own session history in the
 chat. Deleting a chat deletes its transcript as well — except Kimi Code, whose CLI has no delete
 command: the chat disappears from the list, the files stay (and the session can still be resumed
 from the CLI).
 
-The settings show whether the selected provider is signed in, with the command to run when it is
-not; the chat refuses to start on the same condition and says the same thing.
+#### Adding a provider
+
+Under the built-in list there is **Custom providers**: a form, plus **Edit JSON** for one entry at
+a time (that entry only — the keys are never shown). An entry is made of four fields:
+
+| Field | Meaning |
+|---|---|
+| `id` | lowercase letters, digits and dashes; it cannot be renamed later |
+| `title` | what the provider list shows |
+| `adapter` | `acp`, `codex` or `openai` |
+| `command` | for `acp` and `codex`: the program and its arguments, e.g. `gemini --experimental-acp` |
+| `baseUrl` | for `openai`: the endpoint, e.g. `https://gateway.example.com/v1` |
+
+Anything else in JSON is rejected; the key is not a form field. It is typed into the key field
+below the form and goes straight into the store (stdin, never argv, never the settings file).
+
+- **ACP** — any agent speaking the Agent Client Protocol: Gemini CLI, OpenCode, Kimi and others.
+  The model catalog comes from the agent's own `session/new` reply, so an agent that is not signed
+  in shows "the model list of this provider is unavailable" instead of borrowing Claude's list.
+- **Codex** — `codex exec --json`; the catalog and the sign-in status come from the CLI itself
+  (`codex debug models`, `codex login status`).
+- **OpenAI gateway** — a plain chat-completions endpoint. **Text chat only: no tools, no MCP, no
+  files or screenshots.** The form takes an HTTPS address; plain HTTP is allowed only for
+  `127.0.0.1`, `localhost` and `[::1]`.
+
+Two confirmations guard the trusted-file rule. A new or changed `command` is shown in full and has
+to be confirmed — it runs on every message. A changed `baseUrl` is confirmed too, because the key
+saved for that provider would be sent to the new address. Custom ACP and Codex providers run
+their tools without an Ask first dialog: the plugin has no permission channel for them, so do not
+add an agent you would not run unattended.
+
+The store is `$XDG_STATE_HOME/dms-agent/providers.json` (by default
+`~/.local/state/dms-agent/providers.json`, mode 0600). It holds `providers` and `keys`; a corrupt
+or unknown-version file is reported instead of being overwritten with an empty one, and writing is
+atomic under a lock, so the settings UI and a key update cannot lose each other.
 
 ### Hotkey
 
@@ -228,18 +271,31 @@ Setting **Language** to a code translates the interface into it as well, not jus
 speech recognition — on `auto` the interface follows your locale. English and Russian
 ship with the plugin; another language is a table in `i18n.js` and nothing else.
 
-### Clearing history
+### History, clearing and switching providers
 
-Each row in the history list has a cross that deletes that conversation, and
-*Clear all* in the corner removes every one of them. Both ask first: a transcript
-is deleted from disk and there is no copy anywhere. Only agent conversations are
-touched — an interactive Claude Code session started in the same directory is left
-alone, and the id is verified rather than trusted.
+The list is per provider, but it collects chats started in every working directory the plugin
+knows about, not just the current one. A row from another folder carries a folder icon and its
+full path in the tooltip; the tooltip also names the provider. Such a chat can be opened and
+continued here, but renaming is offered only in the folder it was started in.
+
+Each row has a cross that deletes that conversation, and *Clear all* in the corner removes every
+chat of the **current folder**. Both ask first: a transcript is deleted from disk and there is no
+copy anywhere, and the confirmation shows the folder it belongs to. A row from another folder is
+removed from the list only — its original transcript stays where it is. Only agent conversations
+are touched: an interactive Claude Code session started in the same directory is left alone, and
+the id is verified rather than trusted.
+
+Changing the provider, or opening a chat that belongs to another folder, starts a new native
+session — tools, thinking and attachments do not travel. The text does: the user and assistant
+messages so far are re-sent as plain context on the first message to the new session, and the chat
+says so. If that first attempt fails or is cancelled, the context is kept for a retry. A target
+that cannot take the context says so and leaves the previous chat untouched.
+
 
 ### Session name
 
-A chat renamed from the history list (or with `/rename` in the CLI) shows its name
-in the bottom-right corner of the window, like the Claude Code CLI does.
+A chat renamed from the history list (or with `/rename` in a CLI that has it) shows its name
+in the bottom-right corner of the window, like the agent CLI does.
 
 ### Stop button and status line
 
@@ -275,19 +331,29 @@ the chat panel stays in memory with the QML it was built from.
 
 ## Good to know
 
-- **Permissions.** By default the agent asks first: before it runs a command or changes a file the
-  chat shows an **Allow / Deny** dialog (`Enter` allows, `Esc` denies) and the agent waits. In the
-  settings you can switch **Permissions** to *No confirmation*; then Claude Code runs with
+- **Permissions.** By default Claude Code asks first: before it runs a command or changes a file
+  the chat shows an **Allow / Deny** dialog (`Enter` allows, `Esc` denies) and the agent waits. In
+  the settings you can switch **Permissions** to *No confirmation*; then Claude Code runs with
   `--dangerously-skip-permissions` and the agent executes commands **without asking**, with
   unrestricted shell access as your user. That makes "open X, move it to workspace 2" instant —
-  keep it in mind. Prompts, window lists and attachments go to Anthropic in either mode.
-- **Billing follows your Claude Code login, not this plugin.** It shells out to the `claude` you
-  already have, so whatever that is authenticated with — a subscription, or an API key if you set
-  one up — is what answers. There is no key to enter here and no separate account. The cost shown
-  under the input box is what the CLI reports for the request; on a subscription it is an
-  indication of usage rather than a charge.
-- Agent sessions live in their own Claude Code project (working dir
-  `~/.local/state/dms-agent`), separate from sessions you start in your home directory.
+  keep it in mind. CheapVibeCode, Qoder, Kimi Code and custom ACP/Codex providers always run
+  unattended: the plugin has no working permission handshake for them. Prompts, window lists and
+  attachments go to whichever provider you picked in either mode.
+- **Billing follows the CLI you picked, not this plugin.** It shells out to the agent CLI, so
+  whatever that is authenticated with answers: for Claude Code a subscription or an API key on
+  your own account; for CheapVibeCode and an OpenAI gateway the key you store in the plugin. The
+  cost shown under the input box is what the CLI reports for the request; on a subscription it is
+  an indication of usage rather than a charge, and Qoder, Kimi Code, ACP agents and the gateway
+  report none.
+- **Keys live in one place.** The CheapVibeCode key and a custom gateway's key sit in
+  `~/.local/state/dms-agent/providers.json` with mode 0600 — not in DMS plugin settings (ccsync
+  syncs those between machines), not in the JSON editor, not in command lines or logs.
+- **Combo and Tokenator presets are filtered out** of every model catalog, including the ones that
+  arrive namespaced from a gateway (`9router/claude-cowork-combo`, `tokenator/...`). A preset
+  renamed beyond recognition cannot be detected, so the rule is by the preset's own name.
+- **Sessions stay out of your home directory.** The default working folder is
+  `~/.local/state/dms-agent`, separate from sessions you start in `~` — and each provider and
+  folder keeps its own set besides.
 - The chat panel is shown on one monitor at a time; the hotkey toggles it on the focused one.
 
 ## Credits
