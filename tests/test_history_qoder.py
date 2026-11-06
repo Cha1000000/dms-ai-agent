@@ -153,7 +153,10 @@ def test_restore_of_a_missing_session_is_empty(tmp_path):
     home, cwd = tmp_path / "home", tmp_path / "work"
     cwd.mkdir(parents=True)
     out = run_history(home, cwd, "--provider", "qoder", "restore", "ghost")
-    assert json.loads(out.stdout) == {"messages": [], "model": "", "effort": ""}
+    # originDir: restore now reports where it looked (context transfer of a
+    # session from another directory needs the origin — step 5 of the plan).
+    assert json.loads(out.stdout) == {"messages": [], "model": "", "effort": "",
+                                      "originDir": str(cwd)}
 
 
 def test_restore_of_a_claude_session_still_works(tmp_path):
@@ -169,6 +172,27 @@ def test_restore_of_a_claude_session_still_works(tmp_path):
     ]
     assert restored["model"] == "claude-sonnet-5-5"
     assert restored["effort"] == "high"
+
+
+def test_restore_finds_a_session_registered_in_another_directory(tmp_path):
+    # The panel lists --all-dirs; a session registered elsewhere must open
+    # from here: text reads fine, but originDir says where it lives, so the
+    # chat knows a native --resume cannot find it back (context transfer).
+    home, cwd, other = tmp_path / "home", tmp_path / "work", tmp_path / "other"
+    cwd.mkdir(parents=True)
+    other.mkdir(parents=True)
+    sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    make_claude_session(home, other, sid)
+    reg = home / ".local" / "state" / "dms-agent" / "sessions.json"
+    reg.parent.mkdir(parents=True)
+    reg.write_text(json.dumps({"claude": {sid: {
+        "title": "чужой", "workDir": str(other), "ts": 1.0}}}))
+    restored = json.loads(run_history(home, cwd, "--provider", "claude", "restore", sid).stdout)
+    assert restored["messages"] == [
+        {"role": "user", "content": "Hello there"},
+        {"role": "assistant", "content": "Hi!"},
+    ]
+    assert restored["originDir"] == str(other)
 
 
 def test_delete_removes_transcript_sidecar_and_registry_entry(tmp_path):

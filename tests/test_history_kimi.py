@@ -83,7 +83,10 @@ def test_restore_of_an_unknown_session_is_empty(tmp_path):
     home = tmp_path / "home"
     (home / ".kimi-code" / "sessions").mkdir(parents=True)
     data = json.loads(run_history(home, tmp_path / "state", "restore", "session_nope").stdout)
-    assert data == {"messages": [], "model": "", "effort": ""}
+    # originDir: restore now reports the directory it looked from (context
+    # transfer of a session from another directory needs the origin — step 5).
+    assert data == {"messages": [], "model": "", "effort": "",
+                    "originDir": str(home)}
 
 
 def test_delete_removes_the_registry_entry_and_keeps_the_files(tmp_path):

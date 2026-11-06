@@ -11,61 +11,24 @@ claude CLI pointed at their gateway).
 import json
 import os
 import shutil
-import stat
 import sys
 
-STORE_PATH = os.path.join(
-    os.path.expanduser("~/.local/state/dms-agent"), "providers.json"
-)
-# The store path can be pointed elsewhere (the test stand, a throwaway copy).
-# It is not a secret itself — the key inside it is.
-if os.environ.get("PROVIDER_SECRETS_STORE"):
-    STORE_PATH = os.environ["PROVIDER_SECRETS_STORE"]
 CVC_BASE_URL = "https://ru.cheapvibecode.ru"
 # The local gateway of the cc9 wrapper (see ~/.local/bin/cc9).
-CC9_ROUTER_URL = "http://localhost:20128"
+CC9_ROUTER_URL = "http://127.0.0.1:20128"
 
-
-def _load():
-    try:
-        with open(STORE_PATH) as fh:
-            data = json.load(fh)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def _save(data):
-    os.makedirs(os.path.dirname(STORE_PATH), exist_ok=True)
-    # Created with the mode already set: writing first and chmod-ing after
-    # leaves a window in which the key is world-readable, and a crash in that
-    # window leaves it that way for good.
-    fd = os.open(STORE_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
-    with os.fdopen(fd, "w") as fh:
-        json.dump(data, fh, ensure_ascii=False)
-    os.chmod(STORE_PATH, stat.S_IRUSR | stat.S_IWUSR)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import registry  # noqa: E402
 
 
 def get_api_key(provider):
-    entry = _load().get(provider) or {}
-    if not isinstance(entry, dict):
-        return ""
-    return str(entry.get("apiKey") or "")
+    return registry.get_key(provider)
 
 
 def set_api_key(provider, key):
     if not provider:
         return
-    data = _load()
-    key = (key or "").strip()
-    if not key:
-        data.pop(provider, None)
-    else:
-        data[provider] = {"apiKey": key}
-    if data:
-        _save(data)
-    elif os.path.exists(STORE_PATH):
-        os.remove(STORE_PATH)
+    registry.set_key(provider, key)
 
 
 def export_env(provider):
@@ -110,10 +73,14 @@ def test_cvc_key():
 
 
 def cc9_ready():
-    """Whether the cc9 wrapper can run: the wrapper is on PATH and the 9Router
-    gateway answers. The wrapper falls back to Tokenator on its own when the
-    gateway is down, so a down gateway is not a hard "no" — but without the
-    wrapper there is nothing to run at all."""
+    """Whether the cc9 provider may run: the wrapper is on PATH AND the 9Router
+    gateway answers. The wrapper's own fallback launches Tokenator when the
+    gateway is down — forbidden in Jarvis ("Никаких Комбо и моделей Токенатора
+    в Джарвисе быть не должно") — so a down gateway is a hard "no": the launch
+    is blocked here instead of being left to the wrapper's discretion. There is
+    an unavoidable race (the gateway can die between this check and exec); the
+    check closes the common case, the wrapper's fallback can still fire after
+    an in-flight outage."""
     if not shutil.which("cc9"):
         return False
     try:
@@ -122,9 +89,9 @@ def cc9_ready():
         with urllib.request.urlopen(req, timeout=5) as resp:
             return 200 <= resp.status < 300
     except Exception:
-        # The gateway is down: the wrapper falls back to Tokenator, so the
-        # provider is still usable.
-        return True
+        # Gateway down: run would fall through to the wrapper's Tokenator
+        # fallback — refuse rather than launch it.
+        return False
 
 
 def is_signed_in(provider):

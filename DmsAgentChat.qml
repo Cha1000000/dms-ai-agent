@@ -295,7 +295,7 @@ Item {
         // CheapVibeCode): the other CLIs take their prompt as an argument and
         // cannot be fed a voice message without starting a second run.
         visible: !AgentService.busy
-            || (AgentService.provider.caps && AgentService.provider.caps.stdinEnabled)
+            || (AgentService.providerOrClaude.caps && AgentService.providerOrClaude.caps.stdinEnabled)
         width: chatRoot.buttonSize; height: width; radius: height / 2
         opacity: otherBusy || warmingUp ? 0.5 : 1
         color: recording ? Theme.withAlpha(AgentTheme.error, 0.18)
@@ -866,8 +866,8 @@ Item {
                     // one are invisible in another.
                     StyledText {
                         id: providerNameText
-                        visible: AgentService.provider.title !== ""
-                        text: AgentService.provider.title
+                        visible: AgentService.providerKnown && AgentService.provider.title !== ""
+                        text: AgentService.providerKnown ? AgentService.provider.title : AgentService.providerId
                         color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.6)
                         font.pixelSize: Theme.fontSizeSmall
                         elide: Text.ElideRight
@@ -941,8 +941,10 @@ Item {
         // models, not from the list's contentHeight: the list fills the
         // dropdown, so its contentHeight would be a circular dependency.
         width: Math.min(chatRoot.width - Theme.spacingL, chatRoot.menuWidth)
-        height: Math.min(AgentService.models.length * chatRoot.rowHeight + Theme.spacingS,
-                         chatRoot.menuMaxHeight)
+        height: AgentService.modelsError !== ""
+                 ? chatRoot.rowHeight + Theme.spacingS
+                 : Math.min(AgentService.models.length * chatRoot.rowHeight + Theme.spacingS,
+                            chatRoot.menuMaxHeight)
         radius: Theme.cornerRadius
         color: AgentTheme.surfaceContainerHighest
         z: 20
@@ -965,6 +967,9 @@ Item {
             anchors.bottomMargin: Theme.spacingXS
             clip: true
             spacing: 0
+            // The catalog could not be read: the reason is shown in place of
+            // the list, not another provider's models.
+            visible: AgentService.modelsError === ""
             model: AgentService.models
             delegate: Rectangle {
                 width: ListView.view.width; height: chatRoot.rowHeight; radius: Theme.cornerRadius - Theme.spacingXS
@@ -1003,6 +1008,18 @@ Item {
                     }
                 }
             }
+        }
+
+        // The catalog could not be read — the reason instead of the list.
+        StyledText {
+            anchors.fill: parent
+            anchors.margins: Theme.spacingM
+            visible: AgentService.modelsError !== ""
+            text: AgentService.modelsError
+            wrapMode: Text.WordWrap
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: Theme.fontSizeSmall
+            color: AgentTheme.surfaceVariantText
         }
     }
 
@@ -1180,7 +1197,9 @@ Item {
         // per-row crosses.
         Rectangle {
             id: clearAllButton
-            visible: AgentService.history.length > 0
+            visible: AgentService.history.length > 0 && !AgentService.history.some(function(row) {
+                return row.workDir && row.workDir !== AgentService.workDir;
+            })
             anchors.top: parent.top; anchors.right: parent.right
             anchors.topMargin: chatRoot.gap; anchors.rightMargin: Theme.spacingS
             width: clearAllRow.width + Theme.spacingL; height: Theme.iconSize; radius: Theme.cornerRadius
@@ -1229,9 +1248,24 @@ Item {
                 }
                 width: ListView.view.width; height: chatRoot.rowHeight + Theme.spacingXS; radius: Theme.cornerRadius - Theme.spacingXS
                 color: hArea.containsMouse || editing ? Theme.withAlpha(AgentTheme.hoverTint, 0.3) : "transparent"
+                // Registry-backed providers list sessions from every directory
+                // (--all-dirs): a row from another one is marked, and its
+                // tooltip carries the full path — the compound identity.
+                readonly property bool otherDir: modelData.workDir !== undefined
+                    && modelData.workDir !== "" && modelData.workDir !== AgentService.workDir
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingS; spacing: Theme.spacingS
-                    StyledText { visible: !historyRow.editing; text: modelData.title || "Chat"; font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceText; elide: Text.ElideRight; Layout.fillWidth: true }
+                    RowLayout {
+                        visible: !historyRow.editing
+                        Layout.fillWidth: true
+                        spacing: Theme.spacingXS
+                        DankIcon {
+                            visible: historyRow.otherDir
+                            name: "folder_open"; size: chatRoot.iconTiny
+                            color: AgentTheme.surfaceVariantText
+                        }
+                        StyledText { text: modelData.title || "Chat"; font.pixelSize: Theme.fontSizeSmall; color: AgentTheme.surfaceText; elide: Text.ElideRight; Layout.fillWidth: true }
+                    }
                     DankTextField {
                         id: renameInput
                         visible: historyRow.editing
@@ -1261,7 +1295,7 @@ Item {
                     // Above the row's own MouseArea, so it takes the click instead
                     // of opening the conversation.
                     Rectangle {
-                        visible: !historyRow.editing
+                        visible: !historyRow.editing && !historyRow.otherDir
                         Layout.preferredWidth: chatRoot.miniButtonSize; Layout.preferredHeight: chatRoot.miniButtonSize
                         radius: Theme.cornerRadius - Theme.spacingXXS
                         color: renameRowArea.containsMouse ? Theme.withAlpha(AgentTheme.primary, 0.2) : "transparent"
@@ -1308,11 +1342,15 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: chatRoot.askDeleteSession(modelData.id, modelData.title || "Chat")
+                            onClicked: chatRoot.askDeleteSession(modelData.id, modelData.title || "Chat", historyRow.otherDir ? modelData.workDir : "")
                         }
                     }
                 }
-                MouseArea { id: hArea; anchors.fill: parent; hoverEnabled: true; z: -1; enabled: !historyRow.editing; onClicked: { messageModel.clear(); AgentService.resumeSession(modelData.id); historyDropdown.visible = false; } }
+                MouseArea { id: hArea; anchors.fill: parent; hoverEnabled: true; z: -1; enabled: !historyRow.editing; onClicked: { messageModel.clear(); AgentService.resumeSession(modelData.id, modelData.workDir || ""); historyDropdown.visible = false; } }
+                TipArea {
+                    text: (AgentService.providerKnown ? AgentService.provider.title : AgentService.providerId)
+                        + (historyRow.otherDir ? "\n" + modelData.workDir + "\n" + AgentService.tr("history.foreignActions") : "")
+                }
             }
         }
     }
@@ -1323,9 +1361,10 @@ Item {
     property string confirmSessionId: ""
     property string confirmText: ""
 
-    function askDeleteSession(id, title) {
+    function askDeleteSession(id, title, workDir) {
         confirmSessionId = id;
-        confirmText = AgentService.tr("confirm.deleteOne") + "\n\n" + title;
+        confirmText = AgentService.tr("confirm.deleteOne") + "\n\n" + title
+            + (workDir ? "\n\n" + workDir : "");
         confirmDialog.visible = true;
     }
 

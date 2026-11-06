@@ -20,12 +20,14 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import provider_secrets as ps  # noqa: E402
+import registry as registry  # noqa: E402
 
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     path = tmp_path / "providers.json"
-    monkeypatch.setattr(ps, "STORE_PATH", str(path))
+    monkeypatch.setattr(registry, "REGISTRY_PATH", str(path))
+    monkeypatch.setattr(ps, "STORE_PATH", str(path), raising=False)
     return ps
 
 
@@ -59,7 +61,7 @@ def test_blank_key_removes_entry(store):
     # what matters is that nothing is readable back.
     if os.path.exists(store.STORE_PATH):
         data = json.load(open(store.STORE_PATH))
-        assert "cvc" not in data
+        assert "cvc" not in data["keys"]
 
 
 def test_export_env_for_cvc(store):
@@ -89,10 +91,13 @@ def test_env_export_shell_empty_without_key(store):
 
 
 def test_corrupt_file_does_not_crash(store):
+    # Новый контракт (план «Реестр, секреты и граница доверия»): повреждённый
+    # файл — явная ошибка чтения, НИКОГДА не молчаливая замена пустым стором.
     os.makedirs(os.path.dirname(store.STORE_PATH), exist_ok=True)
     with open(store.STORE_PATH, "w") as fh:
         fh.write("{not json")
-    assert store.get_api_key("cvc") == ""
+    with pytest.raises(registry.RegistryError):
+        store.get_api_key("cvc")
 
 
 # --- is_signed_in: the "not logged in" gate (stage 5 of the provider plan) ---
@@ -172,7 +177,7 @@ def _run_cli(store, args, stdin=""):
     return subprocess.run(
         [sys.executable, os.path.join(PLUGIN, "provider_secrets.py"), *args],
         input=stdin, capture_output=True, text=True,
-        env=dict(os.environ, HOME=store.HOME, PROVIDER_SECRETS_STORE=store.STORE_PATH),
+        env=dict(os.environ, HOME=store.HOME, PROVIDER_REGISTRY=store.STORE_PATH),
     )
 
 
@@ -184,8 +189,8 @@ def cli_store(tmp_path, monkeypatch):
     """The real script, with its store path pointed at a temp file."""
     store_path = tmp_path / "providers.json"
     script = os.path.join(PLUGIN, "provider_secrets.py")
-    monkeypatch.setenv("PROVIDER_SECRETS_STORE", str(store_path))
-    monkeypatch.setattr(ps, "STORE_PATH", str(store_path))
+    monkeypatch.setenv("PROVIDER_REGISTRY", str(store_path))
+    monkeypatch.setattr(registry, "REGISTRY_PATH", str(store_path))
     return type("S", (), {"STORE_PATH": str(store_path), "HOME": str(tmp_path)})
 
 
@@ -194,7 +199,9 @@ def test_set_reads_the_key_from_stdin(cli_store):
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "ok"
     data = json.load(open(cli_store.STORE_PATH))
-    assert data["cvc"]["apiKey"] == "sk-from-stdin"
+    # Новый версионированный формат (план «Реестр, секреты и граница доверия»).
+    assert data["version"] == 1
+    assert data["keys"]["cvc"]["apiKey"] == "sk-from-stdin"
 
 
 def test_set_still_works_without_a_stdin_key(cli_store):
@@ -216,7 +223,7 @@ def test_set_with_an_empty_stdin_key_forgets_the_stored_one(cli_store):
     # back.
     if os.path.exists(cli_store.STORE_PATH):
         data = json.load(open(cli_store.STORE_PATH))
-        assert "cvc" not in data
+        assert "cvc" not in data["keys"]
 
 
 def test_the_key_is_not_in_the_command_line(cli_store):
@@ -226,3 +233,60 @@ def test_the_key_is_not_in_the_command_line(cli_store):
     assert out.returncode == 0, out.stderr
     assert secret not in out.stdout
     assert secret not in out.stderr
+
+
+# --- cc9_ready: the Tokenator-fallback gate -----------------------------------
+#
+# Contract: the cc9 wrapper silently falls back to Tokenator when the 9Router
+# gateway is down (checked in ~/.local/bin/cc9:260-271), and Tokenator must
+# never run from Jarvis. So a dead gateway is a hard "no" here — the wrapper
+# never gets the chance to choose its own fallback. No wrapper — also "no".
+
+def _cc9_on_path(tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    (bin_dir / "cc9").write_text("#!/bin/sh\n")
+    (bin_dir / "cc9").chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ["PATH"])
+
+
+def test_cc9_with_a_dead_gateway_is_not_ready(store, tmp_path, monkeypatch):
+    _cc9_on_path(tmp_path, monkeypatch)
+    # Nothing listens on the test router port: the wrapper would fall back to
+    # Tokenator — this provider must refuse instead.
+    monkeypatch.setattr(store, "CC9_ROUTER_URL",
+                        "http://127.0.0.1:1")
+    assert store.cc9_ready() is False
+
+
+def test_cc9_with_a_live_gateway_is_ready(store, tmp_path, monkeypatch):
+    import http.server
+    import socketserver
+    import threading
+    _cc9_on_path(tmp_path, monkeypatch)
+
+    class OK(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+    with socketserver.TCPServer(("127.0.0.1", 0), OK) as srv:
+        port = srv.server_address[1]
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        try:
+            monkeypatch.setattr(store, "CC9_ROUTER_URL", "http://127.0.0.1:%d" % port)
+            assert store.cc9_ready() is True
+        finally:
+            srv.shutdown()
+
+
+def test_cc9_without_the_wrapper_is_not_ready(store, tmp_path, monkeypatch):
+    # A machine may have a real cc9 on PATH — hide it entirely.
+    monkeypatch.setattr(store.shutil, "which", lambda name: None)
+    assert store.cc9_ready() is False

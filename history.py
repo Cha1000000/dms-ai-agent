@@ -7,7 +7,7 @@ found by scanning it; Qoder and Kimi keep transcripts none of the plugin's filte
 understand, so those are listed from the Jarvis session registry (see
 sessions_registry.py).
 """
-import json, os, glob, re, shlex, shutil, subprocess, sys
+import json, os, glob, re, shlex, shutil, subprocess, sys, uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sessions_registry  # noqa: E402
@@ -26,12 +26,35 @@ action = argv[0] if argv else "list"
 # claude catalog (models.py) or with an empty history (here) would make the
 # same wrong input give two different answers.
 KNOWN_PROVIDERS = ("claude", "cvc", "cc9", "qoder", "kimi")
-if provider not in KNOWN_PROVIDERS:
-    print("history.py: unknown provider %r (known: %s)"
-          % (provider, ", ".join(KNOWN_PROVIDERS)), file=sys.stderr)
-    sys.exit(2)
 # Transcripts of the stock claude CLI (also run against the CVC gateway).
 TRANSCRIPT_PROVIDERS = ("claude", "cvc", "cc9")
+# Providers registered in providers.json (adapters acp/codex/openai). Their
+# transcripts are in formats/scans the plugin does not own, so like qoder/kimi
+# the Jarvis session registry is the only history — but the set is dynamic.
+import registry as _prov_registry  # noqa: E402
+
+# A corrupt providers.json must not take the built-in providers' history down
+# with it; the registry providers are simply unknown then (the settings UI
+# shows the corrupt file's error — here it stays a rejection, not a fallback).
+try:
+    REGISTRY_ENTRIES = _prov_registry.load().get("providers", {})
+    REGISTRY_PROVIDERS = frozenset(REGISTRY_ENTRIES)
+except _prov_registry.RegistryError:
+    REGISTRY_ENTRIES = {}
+    REGISTRY_PROVIDERS = frozenset()
+if provider not in KNOWN_PROVIDERS and provider not in REGISTRY_PROVIDERS:
+    print("history.py: unknown provider %r (known: %s)"
+          % (provider, ", ".join(sorted(set(KNOWN_PROVIDERS) | REGISTRY_PROVIDERS))),
+          file=sys.stderr)
+    sys.exit(2)
+REGISTRY_BACKED = provider not in TRANSCRIPT_PROVIDERS
+OPENAI_BACKED = REGISTRY_ENTRIES.get(provider, {}).get("adapter") == "openai"
+# "list --all-dirs": every directory with a registered Jarvis session, not
+# just the current one. Each row carries its workDir (compound identity —
+# the same id under two providers or two directories is two sessions).
+ALL_DIRS = "list" in argv and "--all-dirs" in argv
+if "--all-dirs" in argv:
+    argv.remove("--all-dirs")
 # Every CLI stores sessions under a slug of the working directory
 # (non-alphanumerics -> "-"); the agent and this script run from the same one.
 TRANSCRIPT_ROOTS = {
@@ -71,6 +94,24 @@ def registry_entry(provider, sid):
         if e["id"] == sid:
             return e
     return None
+
+
+def openai_session(sid):
+    try:
+        parsed = uuid.UUID(sid)
+        if parsed.version != 4 or str(parsed) != sid:
+            return "", None
+        state = os.path.expanduser(os.environ.get("XDG_STATE_HOME") or "~/.local/state")
+        path = os.path.join(state, "dms-agent", "openai-sessions", sid + ".json")
+        with open(path) as fh:
+            data = json.load(fh)
+        if (not isinstance(data, dict) or data.get("version") != 1 or data.get("id") != sid
+                or data.get("provider") != provider or not isinstance(data.get("workDir"), str)
+                or not isinstance(data.get("messages"), list)):
+            return "", None
+        return path, data
+    except (ValueError, OSError, TypeError):
+        return "", None
 
 
 def is_agent_session(path):
@@ -190,18 +231,44 @@ def delete_via_cli(provider, sid, work_dir):
 
 if action == "list":
     results = []
+    if OPENAI_BACKED:
+        root = os.path.expanduser(os.environ.get("XDG_STATE_HOME") or "~/.local/state")
+        for path in glob.glob(os.path.join(root, "dms-agent", "openai-sessions", "*.json")):
+            sid = os.path.basename(path)[:-5]
+            _, data = openai_session(sid)
+            if not data or (not ALL_DIRS and data["workDir"] != os.getcwd()):
+                continue
+            text = next((m.get("content", "") for m in data["messages"]
+                         if isinstance(m, dict) and m.get("role") == "user" and isinstance(m.get("content"), str)), "")
+            entry = registry_entry(provider, sid)
+            try:
+                mtime = os.path.getmtime(path)
+            except OSError:
+                continue
+            title = entry["title"] if entry and entry["title"] else text[:60]
+            results.append({"id": sid, "title": title, "name": title,
+                            "date": int(mtime * 1000), "workDir": data["workDir"]})
+        results.sort(key=lambda row: row["date"], reverse=True)
+        print(json.dumps(results))
+        sys.exit(0)
     if provider in TRANSCRIPT_PROVIDERS:
         # The files can vanish between the glob and the read (deleted from the
         # other panel); such a file is skipped, not fatal.
+        dirs = {os.getcwd()}
+        if ALL_DIRS:
+            for shared_provider in TRANSCRIPT_PROVIDERS:
+                dirs.update(e["workDir"] for e in sessions_registry.list(shared_provider))
         files = []
-        for f in glob.glob(base + "*.jsonl"):
-            try:
-                os.path.getmtime(f)
-            except OSError:
+        for work_dir in dirs:
+            for f in glob.glob(transcript_base(provider, work_dir) + "*.jsonl"):
+                try:
+                    files.append((os.path.getmtime(f), f, work_dir))
+                except OSError:
+                    continue
+        files.sort(reverse=True)
+        for _, f, work_dir in files:
+            if not is_agent_session(f):
                 continue
-            files.append(f)
-        files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-        for f in [f for f in files if is_agent_session(f)][:20]:
             sid = os.path.basename(f).replace(".jsonl", "")
             try:
                 mtime = os.path.getmtime(f)
@@ -235,22 +302,27 @@ if action == "list":
                     name = custom_title(f)
                 except OSError:
                     pass
-                results.append({"id": sid, "title": name or title, "name": name, "date": int(mtime * 1000)})
+                results.append({"id": sid, "title": name or title, "name": name,
+                                "date": int(mtime * 1000), "workDir": work_dir})
                 # Remember the session so other providers (and tools that cannot
                 # scan Claude Code transcripts) can still see it in one place.
                 # An "if absent" write: re-reading the history must not move a
                 # session's place in the panel, and a rename must survive.
                 if name or title:
-                    sessions_registry.add_if_absent(provider, sid, name or title, os.getcwd())
+                    sessions_registry.add_if_absent(provider, sid, name or title, work_dir)
     else:
-        # Qoder / Kimi transcripts are in formats the plugin cannot scan; the
-        # registry is the only source of "sessions this chat started". Only
-        # this working directory is listed: `--resume` searches no further than
-        # the current project, so anything else could not be reopened.
+        # Qoder / Kimi / registry providers: transcripts are in formats the
+        # plugin cannot scan; the registry is the only source of "sessions
+        # this chat started". Without --all-dirs only this working directory
+        # is listed: native `--resume` searches no further than the current
+        # project, so anything else could not be reopened.
         here = os.getcwd()
-        for e in [e for e in sessions_registry.list(provider) if e["workDir"] == here][:20]:
+        entries = sessions_registry.list(provider)
+        if not ALL_DIRS:
+            entries = [e for e in entries if e["workDir"] == here]
+        for e in entries:
             results.append({"id": e["id"], "title": e["title"], "name": e["title"],
-                            "date": int(e["ts"] * 1000)})
+                            "date": int(e["ts"] * 1000), "workDir": e["workDir"]})
     print(json.dumps(results))
 
 elif action == "register":
@@ -277,6 +349,14 @@ elif action == "delete":
                 os.remove(path)
                 ok = True
                 forget_synced([sid])
+        elif OPENAI_BACKED:
+            path, data = openai_session(sid)
+            if data and data["workDir"] == os.getcwd():
+                try:
+                    os.remove(path)
+                    ok = True
+                except OSError:
+                    pass
         else:
             # Registry-backed providers: the transcript is only touched for a
             # session the registry knows — those are the ones this chat started.
@@ -286,7 +366,8 @@ elif action == "delete":
         # The registry entry goes in every case: the panel must not offer a
         # session that is gone. But a session that could not be removed is
         # still a failed delete — "deleted: 0" says so.
-        sessions_registry.remove(provider, sid)
+        if not OPENAI_BACKED or ok:
+            sessions_registry.remove(provider, sid)
         # Claude Code and CheapVibeCode are the same CLI on two gateways and
         # share one transcript store. The session is therefore gone for both,
         # and the other one's registry entry would keep a session that no
@@ -326,7 +407,19 @@ elif action == "rename":
 
 elif action == "delete-all":
     removed = []
-    if provider in TRANSCRIPT_PROVIDERS:
+    if OPENAI_BACKED:
+        root = os.path.expanduser(os.environ.get("XDG_STATE_HOME") or "~/.local/state")
+        for path in glob.glob(os.path.join(root, "dms-agent", "openai-sessions", "*.json")):
+            sid = os.path.basename(path)[:-5]
+            checked, data = openai_session(sid)
+            if data and data["workDir"] == os.getcwd():
+                try:
+                    os.remove(checked)
+                    sessions_registry.remove(provider, sid)
+                    removed.append(sid)
+                except OSError:
+                    pass
+    elif provider in TRANSCRIPT_PROVIDERS:
         for f in glob.glob(base + "*.jsonl"):
             if is_agent_session(f):
                 try:
@@ -367,9 +460,67 @@ elif action == "delete-all":
 
 elif action == "restore":
     sid = argv[1] if len(argv) > 1 else ""
+    if not sid or "/" in sid or ".." in sid:
+        print(json.dumps({"messages": [], "model": "", "effort": "", "originDir": ""}))
+        sys.exit(1)
     # Kimi's wire log is found by glob (see kimi_wire_file); everyone else is
-    # the flat <id>.jsonl under the provider's transcript root.
-    session_file = kimi_wire_file(sid) if provider == "kimi" else base + sid + ".jsonl"
+    # the flat <id>.jsonl under the provider's transcript root. A registry
+    # provider's session may live in another directory (the panel lists
+    # --all-dirs): its workDir is the compound identity, so the transcript is
+    # looked up there, not in the current one. Qoder keeps its old behavior:
+    # the transcript next to the current directory, no registry lookup — its
+    # sessions were never registry-scoped on restore.
+    origin_dir = os.getcwd()
+    requested_dir = argv[2] if len(argv) > 2 else ""
+    shared = TRANSCRIPT_PROVIDERS if provider in TRANSCRIPT_PROVIDERS else (provider,)
+    if requested_dir and requested_dir != origin_dir:
+        _, openai_data = openai_session(sid) if OPENAI_BACKED else ("", None)
+        known = openai_data and openai_data["workDir"] == requested_dir
+        if not known and not any(e["workDir"] == requested_dir and e["id"] == sid
+                                 for source in shared for e in sessions_registry.list(source)):
+            print(json.dumps({"messages": [], "model": "", "effort": "", "originDir": requested_dir}))
+            sys.exit(1)
+        origin_dir = requested_dir
+    if OPENAI_BACKED:
+        _, data = openai_session(sid)
+        if data and (not requested_dir or data["workDir"] == requested_dir):
+            messages = [m for m in data["messages"] if isinstance(m, dict)
+                        and m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)]
+            print(json.dumps({"messages": messages, "model": "", "effort": "", "originDir": data["workDir"]}))
+        else:
+            print(json.dumps({"messages": [], "model": "", "effort": "", "originDir": origin_dir}))
+        sys.exit(0)
+    if provider == "kimi":
+        session_file = kimi_wire_file(sid)
+        e = registry_entry(provider, sid)
+        if e:
+            origin_dir = e["workDir"]
+    elif provider in TRANSCRIPT_PROVIDERS or provider == "qoder":
+        # The transcript store is keyed by directory slug: this directory
+        # first, then every directory the session registry remembers for the
+        # provider (--all-dirs made those visible). A transcript found in
+        # another directory is READ here, but its native --resume would not
+        # find it back from the current one — the answer says so (originDir),
+        # and the chat continues it as a context transfer, not a native one.
+        session_file = transcript_base(provider, origin_dir) + sid + ".jsonl"
+        if not requested_dir and not os.path.exists(session_file):
+            search_providers = TRANSCRIPT_PROVIDERS if provider in TRANSCRIPT_PROVIDERS else (provider,)
+            for source in search_providers:
+                for e in sessions_registry.list(source):
+                    if e["id"] != sid:
+                        continue
+                    candidate = transcript_base(provider, e["workDir"]) + sid + ".jsonl"
+                    if os.path.exists(candidate):
+                        session_file = candidate
+                        origin_dir = e["workDir"]
+                        break
+                if origin_dir != os.getcwd():
+                    break
+    else:
+        e = registry_entry(provider, sid)
+        if e:
+            origin_dir = e["workDir"]
+        session_file = (transcript_base(provider, e["workDir"]) + sid + ".jsonl") if e else ""
     msgs = []
     # The CLI stamps every reply with the model and effort it ran with; the last
     # reply tells what the session was using when it was left.
@@ -402,8 +553,7 @@ elif action == "restore":
                         if isinstance(content, list):
                             for c in content:
                                 if isinstance(c, dict) and c.get("type") == "text" and c.get("text", "").strip():
-                                    text = c["text"]
-                                    break
+                                    text += c["text"]
                         if text and not text.startswith("<"):
                             msgs.append({"role": role, "content": text})
                     elif d.get("type") == "user" and not d.get("isMeta"):
@@ -414,7 +564,6 @@ elif action == "restore":
                             for c in content:
                                 if isinstance(c, dict) and c.get("type") == "text" and not c["text"].startswith("<"):
                                     msgs.append({"role": "user", "content": c["text"]})
-                                    break
                     elif d.get("type") == "assistant":
                         # Subagent replies and synthetic or gateway records say nothing about
                         # the chat's own model. Older CLIs have no requestedModel.
@@ -429,7 +578,7 @@ elif action == "restore":
                             for c in content:
                                 if isinstance(c, dict) and c.get("type") == "text" and c["text"].strip():
                                     msgs.append({"role": "assistant", "content": c["text"]})
-                                    break
                 except (ValueError, AttributeError, TypeError, KeyError):
                     pass
-    print(json.dumps({"messages": msgs[-20:], "model": model, "effort": effort}))
+    print(json.dumps({"messages": msgs, "model": model, "effort": effort,
+                      "originDir": origin_dir}))

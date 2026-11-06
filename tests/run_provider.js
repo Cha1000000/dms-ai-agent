@@ -77,6 +77,34 @@ if (fn === "kimi_caps") {
     out = chipLabel(arg.label, arg.max);
 } else if (fn === "keepsModel") {
     out = keepsModel(PROVIDERS[arg.provider], arg.models, arg.saved);
+} else if (fn === "registry_set") {
+    setRegistry(arg.data);
+    const known = registryAll();
+    out = {
+        byId: {},
+        unknownId: byId("no-such-provider") || null,
+        allIds: known.map(function (p) { return p.id; }),
+    };
+    for (const id of out.allIds) {
+        const p = byId(id);
+        out.byId[id] = {
+            id: p.id, title: p.title, adapter: p.adapter || null,
+            baseUrl: p.baseUrl || "", command: p.command || "",
+        };
+    }
+} else if (fn === "registry_parse") {
+    setRegistry(arg.data);
+    const p = byId(arg.id);
+    out = p.parseLine(arg.line);
+} else if (fn === "registry_command") {
+    setRegistry(arg.data);
+    const p = byId(arg.id);
+    const q = (s) => "'" + String(s).replace(/'/g, "'\"'\"'") + "'";
+    out = p ? {
+        stdinUser: p.stdinUserFormat("hi"),
+        cmd: p.buildCommand({ q: q, bridgeScript: "/bridges/acp_bridge.py" }),
+        caps: p.caps,
+    } : null;
 } else {
     console.error("unknown fn " + fn);
     process.exit(2);

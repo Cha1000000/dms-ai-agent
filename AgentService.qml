@@ -56,6 +56,9 @@ Singleton {
     readonly property string modelsScript: decodeURIComponent(String(Qt.resolvedUrl("models.py")).replace(/^file:\/\//, ""))
     readonly property string secretsScript: decodeURIComponent(String(Qt.resolvedUrl("provider_secrets.py")).replace(/^file:\/\//, ""))
     property double _modelsFetchedAt: 0
+    // Set when the provider's model catalog could not be read: the picker
+    // shows the reason instead of another provider's models.
+    property string modelsError: ""
 
     // A model is selected either by its alias ("opus") or by a full id
     // ("claude-opus-4-7"), so both have to be matched.
@@ -104,6 +107,7 @@ Singleton {
                 const list = JSON.parse(output);
                 if (Array.isArray(list) && list.length > 0) {
                     models = list;
+                    modelsError = "";
                     // A saved id left from another provider ("opus",
                     // "Qwen3.8-Flash") would be rejected by --model. It survives
                     // only when the new catalog still lists it (or the aliases
@@ -114,8 +118,17 @@ Singleton {
                         const first = models.find(x => String(x.id).indexOf("group") < 0) || models[0];
                         chooseModel((byHint && String(byHint.id).indexOf("group") < 0 ? byHint : first).id);
                     }
+                } else {
+                    // The provider's catalog is empty or unreachable: the picker
+                    // must not keep showing another provider's models as if
+                    // they were this one's.
+                    models = [];
+                    modelsError = tr("models.unavailable");
+                    _modelsFetchedAt = 0;
                 }
             } catch (e) {
+                models = [];
+                modelsError = tr("models.unavailable");
                 _modelsFetchedAt = 0;
             }
         });
@@ -141,9 +154,135 @@ Singleton {
     // Which agent CLI runs the chat. "claude" is the default and keeps every setting
     // that predates the provider registry.
     property string providerId: "claude"
-    readonly property var provider: Providers.byId(providerId)
+    // undefined when the saved id is not builtin and not in providers.json
+    // (deleted while the setting survived): the UI shows that, the chat never
+    // silently falls back to claude.
+    readonly property var provider: { registryRevision; return Providers.byId(providerId); }
+    readonly property bool providerKnown: provider !== undefined
+    // Fallback descriptor for code paths that need *a* descriptor while the
+    // id is unknown; every user-visible decision checks providerKnown first.
+    readonly property var providerOrClaude: providerKnown ? provider : Providers.byId("claude")
+
+    // --- External provider registry (providers.json) ---
+    readonly property string registryScript: decodeURIComponent(String(Qt.resolvedUrl("registry.py")).replace(/^file:\/\//, ""))
+    readonly property string providerRegistryPath: Quickshell.env("PROVIDER_REGISTRY")
+        || ((Quickshell.env("XDG_STATE_HOME") || (homeDir + "/.local/state")) + "/dms-agent/providers.json")
+    property string _registryStamp: ""
+    Timer {
+        interval: 2000
+        running: true
+        repeat: true
+        onTriggered: root.runQuietExit("stat -Lc '%d:%i:%s:%Y:%y:%z' -- " + root.shellQuote(root.providerRegistryPath) + " 2>/dev/null || printf missing", function(output) {
+            var stamp = String(output).trim();
+            if (root._registryStamp !== "" && stamp !== root._registryStamp) root.loadProviderRegistry();
+            root._registryStamp = stamp;
+        })
+    }
+    // Bridge entry points for registry providers: the provider's own command
+    // is the bridge's argument (AgentService.qml, _launchClaude).
+    readonly property string acpBridgeScript: decodeURIComponent(String(Qt.resolvedUrl("bridges/acp_bridge.py")).replace(/^file:\/\//, ""))
+    readonly property string codexBridgeScript: decodeURIComponent(String(Qt.resolvedUrl("bridges/codex_bridge.py")).replace(/^file:\/\//, ""))
+    readonly property string openaiBridgeScript: decodeURIComponent(String(Qt.resolvedUrl("bridges/openai_bridge.py")).replace(/^file:\/\//, ""))
+    property string bridgeScript: {
+        var d = providerOrClaude;
+        if (!d || !d.adapter) return "";
+        if (d.adapter === "acp") return acpBridgeScript;
+        if (d.adapter === "codex") return codexBridgeScript;
+        if (d.adapter === "openai") {
+            // The gateway bridge takes the base URL as its argument; without
+            // one there is nothing to talk to.
+            return d.baseUrl ? openaiBridgeScript : "";
+        }
+        return "";
+    }
+    property int registryRevision: 0
+    property int _registryLoadId: 0
+    function loadProviderRegistry() {
+        var loadId = ++_registryLoadId;
+        runQuietExit("python3 " + shellQuote(registryScript) + " list --json", function(output) {
+            if (loadId !== _registryLoadId) return;
+            try {
+                Providers.setRegistry(JSON.parse(String(output).trim()));
+                registryRevision++;
+                registryReady = true;
+            } catch (e) {
+                // A corrupt registry keeps the builtin five working; the
+                // settings UI shows the error. No silent empty-swap here.
+                registryReady = false;
+            }
+        });
+    }
+    property bool registryReady: false
     // Another provider means another catalog and another set of sessions: the
     // hour-long model cache and the history both belong to the one before.
+    // --- Context transfer (step 4): switching providers keeps the chat's text
+    // and replays it to the new provider on its first turn. Text user/assistant
+    // messages only: tool output, thinking and attachments are not carried
+    // over (the plan forbids claiming a full memory transfer).
+    property var _carriedContext: []
+    readonly property string contextDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/dms-agent-context"
+    property string _pendingContextFile: ""
+    function collectCarried() {
+        var carried = [];
+        for (var i = 0; i < messages.length; i++) {
+            var m = messages[i];
+            var c = typeof m.content === "string" ? m.content.trim() : "";
+            // An "Error: …" bubble is the failed transfer itself, not part of
+            // the conversation the next provider should see.
+            if ((m.role === "user" || m.role === "assistant") && c !== ""
+                && !m.transferError && !(m.role === "assistant" && c.indexOf("Error:") === 0))
+                carried.push({ role: m.role, content: m.content });
+        }
+        return carried;
+    }
+    function carriedText(carried) {
+        return carried.map(function(m) { return m.role + ": " + m.content; }).join("\n\n");
+    }
+    function rearmCarriedContext() {
+        // Sync snapshot of the current chat: called on a provider switch, and
+        // again after a failed/cancelled transfer (the plan keeps the context
+        // alive for a retry, including the message that failed).
+        var current = collectCarried();
+        var overlap = Math.min(_carriedContext.length, current.length);
+        while (overlap > 0) {
+            var matches = true;
+            for (var i = 0; i < overlap; i++) {
+                var a = _carriedContext[_carriedContext.length - overlap + i];
+                var b = current[i];
+                if (a.role !== b.role || a.content !== b.content) { matches = false; break; }
+            }
+            if (matches) break;
+            overlap--;
+        }
+        _carriedContext = _carriedContext.concat(current.slice(overlap));
+    }
+    function removeContextFile() {
+        if (_pendingContextFile === "") return;
+        var f = _pendingContextFile;
+        _pendingContextFile = "";
+        runQuietExit("rm -f " + shellQuote(f), null);
+    }
+    function clearChatContext() {
+        _carriedContext = [];
+        removeContextFile();
+    }
+    Component {
+        id: contextWriter
+        Process {
+            id: writer
+            property string path: ""
+            property string input: ""
+            property var finished: null
+            command: ["python3", "-c", "import os,stat,sys\nd,p=sys.argv[1:]\nos.umask(0o077)\ntry: os.mkdir(d,0o700)\nexcept FileExistsError: pass\ns=os.lstat(d)\nif not stat.S_ISDIR(s.st_mode) or s.st_uid != os.getuid() or stat.S_IMODE(s.st_mode) != 0o700: sys.exit(1)\nfd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nwith os.fdopen(fd,'wb') as f: f.write(sys.stdin.buffer.read())", root.contextDir, path]
+            stdinEnabled: true
+            onStarted: { write(input); stdinEnabled = false; }
+            onExited: function(exitCode) {
+                if (finished) finished(exitCode);
+                destroy();
+            }
+        }
+    }
+
     onProviderIdChanged: {
         // A session belongs to the provider that created it: the other CLI
         // cannot find it, and `--resume` of a missing session is a failed run
@@ -156,7 +295,12 @@ Singleton {
         // chat that is being cleared right here.
         loadingSession = false;
         cancelRequest();
+        // Text of the conversation follows the user to the new provider as a
+        // first-turn context; the native session id stays with the old one.
+        var hadChat = collectCarried().length > 0;
+        rearmCarriedContext();
         messages = [];
+        if (hadChat) addMessage("tool_status", tr("notice.contextTransfered"));
         sessionId = "";
         lastCost = "";
         // Restore this provider's own last model; a foreign id would be
@@ -174,7 +318,7 @@ Singleton {
     }
     // Providers that cannot ask before acting (Qoder, Kimi) always run unattended;
     // the Permissions picker shows this as a fixed state instead of a choice.
-    readonly property bool providerCanAskFirst: provider.caps && provider.caps.askFirst
+    readonly property bool providerCanAskFirst: providerOrClaude.caps && providerOrClaude.caps.askFirst
     // Switching to a session from the history also switches to its model and effort.
     property bool restoreSessionModel: true
     // The line under the toolbar (status, cost, session name) folded down to its toggle.
@@ -760,7 +904,15 @@ Singleton {
         loadHistory();
     }
 
-    Component.onCompleted: { loadHistory(); refreshModels(); }
+    Component.onCompleted: {
+        // Orphaned transfer files from a crashed previous instance: the runtime
+        // dir holds nothing but this plugin's context files, and no live
+        // instance can exist when this one starts — wipe it, not just the
+        // files older than some age. The plan requires cleanup "at the next
+        // start after a crash".
+        runQuietExit("rm -rf " + shellQuote(contextDir), null);
+        loadProviderRegistry(); loadHistory(); refreshModels();
+    }
 
     // --- Process runner ---
     Component {
@@ -804,6 +956,13 @@ Singleton {
     }
 
     function clearMessages() {
+        if (loadingSession) { loadingSession = false; busy = false; }
+        else if (busy) {
+            cancelRequest();
+            if (_claudeProcess) { _claudeProcess.signal(15); _claudeProcess = null; }
+        }
+        _requestId++;
+        clearChatContext();
         messages = [];
         sessionId = "";
         lastCost = "";
@@ -820,7 +979,9 @@ Singleton {
     readonly property string historyScript: decodeURIComponent(String(Qt.resolvedUrl("history.py")).replace(/^file:\/\//, ""))
 
     function loadHistory() {
-        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " list", function(output) {
+        // Each row includes its working directory; foreign sessions are
+        // restored as text because native resume is scoped to this directory.
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " list --all-dirs", function(output) {
             try { history = JSON.parse(String(output).trim()); } catch(e) { history = []; }
         });
     }
@@ -866,8 +1027,11 @@ Singleton {
     // while it runs, so the button is shown dimmed.
     property bool loadingSession: false
 
-    function resumeSession(historySessionId) {
+    function resumeSession(historySessionId, historyWorkDir) {
         if (busy) return;
+        clearChatContext();
+        var request = ++_requestId;
+        var restoreDir = workDir;
         sessionId = historySessionId;
         messages = [];
         busy = true;
@@ -879,15 +1043,23 @@ Singleton {
         // other CLI — it must not land in the chat that was just cleared.
         var restoreProvider = providerId;
 
-        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " restore " + shellQuote(historySessionId), function(output) {
-            if (restoreProvider !== providerId) return;
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " restore " + shellQuote(historySessionId) + " " + shellQuote(historyWorkDir || ""), function(output) {
+            if (request !== _requestId || restoreProvider !== providerId || restoreDir !== workDir) return;
             var loaded = [];
             var restored = {};
             try { restored = JSON.parse(String(output).trim()); } catch(e) {}
             if (Array.isArray(restored)) loaded = restored;
             else if (restored && Array.isArray(restored.messages)) loaded = restored.messages;
+            // A transcript can live in another directory (the panel lists
+            // --all-dirs). Its text is read fine, but a native --resume from
+            // here would not find that session — so the id is not kept, and
+            // the conversation becomes a context transfer instead: the next
+            // message replays it to the provider as text.
+            var originDir = restored && !Array.isArray(restored) ? String(restored.originDir || "") : "";
+            var foreignDir = originDir !== "" && originDir !== workDir;
+            if (foreignDir) sessionId = "";
             if (restoreSessionModel && restored && !Array.isArray(restored)
-                && provider.caps && provider.caps.perSessionRestore)
+                && providerOrClaude.caps && providerOrClaude.caps.perSessionRestore)
                 applySessionModel(restored.model, restored.effort);
             for (var i = 0; i < loaded.length; i++) {
                 loaded[i].timestamp = Date.now();
@@ -898,7 +1070,12 @@ Singleton {
             }
             if (loaded.length === 0) {
                 addMessage("assistant", "Session resumed.");
+            } else if (foreignDir) {
+                addMessage("tool_status", tr("notice.foreignDirResumed"));
             }
+            // The restored text must ride along: arm the transfer (openai
+            // replays it every turn; a provider switch carries it too).
+            if (foreignDir) rearmCarriedContext();
             loadingSession = false;
             busy = false;
             statusText = tr("status.ready");
@@ -1023,7 +1200,7 @@ Singleton {
             onStarted: if (input !== "") write(input)
             stdout: SplitParser {
                 onRead: data => {
-                    if (root._claudeProcess === claudeProc) root.handleStreamLine(data);
+                    if (root._claudeProcess === claudeProc && !root._cancelled) root.handleStreamLine(data);
                 }
             }
             stderr: StdioCollector {}
@@ -1043,6 +1220,8 @@ Singleton {
             if (root._claudeProcess && !root._gotResult) {
                 root._claudeProcess = null;
                 root.permissionQueue = [];
+                root.removeContextFile();
+                if (root._carriedContext.length > 0) root.rearmCarriedContext();
                 if (root._cancelled) {
                     var sameProvider = root._cancelProvider === root.providerId;
                     root._cancelled = false;
@@ -1071,7 +1250,12 @@ Singleton {
     function cancelRequest() {
         if (loadingSession) return;
         permissionQueue = [];
+        exitGrace.stop();
+        cancelFallback.stop();
+        cancelCloseStdin.stop();
         _requestId++;
+        removeContextFile();
+        if (_carriedContext.length > 0) rearmCarriedContext();
         _cancelled = true;
         _cancelProvider = providerId;
         if (_claudeProcess) {
@@ -1082,7 +1266,7 @@ Singleton {
             // "agent exited without a response" instead of "Cancelled".
             // The signal stays as a fallback for a CLI that ignores the
             // interrupt, sent only after the CLI had time to answer.
-            if (provider.caps && provider.caps.cancelViaStdin) {
+            if (providerOrClaude.caps && providerOrClaude.caps.cancelViaStdin) {
                 try {
                     proc.write(JSON.stringify({
                         type: "control_request",
@@ -1149,21 +1333,82 @@ Singleton {
     // the user logs in, the very next message goes through.
     property var _signedIn: ({})
     function _launchClaudeChecked(prompt) {
-        if (_signedIn[providerId] === true) { _launchClaude(prompt); return; }
+        // The saved id has no descriptor (removed from providers.json, or the
+        // registry file is corrupt): say so, never launch a different CLI.
+        if (!providerKnown) {
+            finishResponse(tr("error.unknownProvider") + " " + providerId);
+            return;
+        }
+        if (_signedIn[providerId] === true) { _launchChecked(prompt); return; }
         var request = _requestId;
         runQuietExit("python3 " + shellQuote(secretsScript) + " check " + shellQuote(providerId), function(output) {
             if (request !== _requestId) return;
             if (String(output).trim() === "set") {
                 _signedIn[providerId] = true;
-                _launchClaude(prompt);
+                _launchChecked(prompt);
             } else {
-                finishResponse(tr("error.notLoggedIn") + " (" + provider.title + "). "
-                               + tr("loginHint." + providerId));
+                // A registry provider has no per-provider hint: the generic
+                // line covers it instead of showing the key name itself.
+                var hintKey = "loginHint." + providerId;
+                var hint = I18n.has(uiLanguage, hintKey) ? tr(hintKey) : tr("loginHint.generic");
+                finishResponse(tr("error.notLoggedIn") + " (" + provider.title + "). " + hint);
             }
         });
     }
 
     function _launchClaude(prompt) {
+        // Context transfer (step 4): a carried chat goes along as a context
+        // file. Registry bridges take the file path in the config line,
+        // written 0600 before the launch; claude-like providers take the same
+        // text prepended to the prompt — no file at all. The openai gateway
+        // has no native history at all: every turn there is a "transfer", so
+        // the whole chat text rides along each time. A failed or cancelled
+        // turn rearms the snapshot for the retry.
+        var carried = _carriedContext;
+        if (carried.length > 0 && !providerOrClaude.stdinUserFormat) {
+            rearmCarriedContext();
+            finishResponse(tr("error.contextUnsupported"), true);
+            return;
+        }
+        if (carried.length > 0 && providerOrClaude.adapter) {
+            statusText = tr("status.processing");
+            var request = _requestId;
+            var path = contextDir + "/ctx-" + Date.now() + "-" + request + "-" + Math.random().toString(36).slice(2) + ".jsonl";
+            var writer = contextWriter.createObject(root, {
+                path: path,
+                input: carried.map(function(m) { return JSON.stringify(m); }).join("\n") + "\n",
+                finished: function(exitCode) {
+                    if (request !== _requestId || exitCode !== 0) {
+                        runQuietExit("rm -f " + shellQuote(path), null);
+                        if (request === _requestId) {
+                            rearmCarriedContext();
+                            finishResponse(tr("error.contextUnsupported"), true);
+                        }
+                        return;
+                    }
+                    _pendingContextFile = path;
+                    _launchNow(prompt);
+                }
+            });
+            writer.running = true;
+            return;
+        }
+        _launchNow(carried.length > 0 ? carriedText(carried) + "\n\n" + prompt : prompt);
+    }
+
+    function _launchChecked(prompt) {
+        // openai keeps no server-side session: replay the full chat each turn.
+        if (providerOrClaude.adapter === "openai" && sessionId === "" && _carriedContext.length === 0) {
+            var chat = collectCarried();
+            _carriedContext = chat.slice(0, Math.max(0, chat.length - 1));
+        }
+        _launchClaude(prompt);
+    }
+
+    function _launchNow(prompt) {
+        exitGrace.stop();
+        cancelFallback.stop();
+        cancelCloseStdin.stop();
         statusText = tr(activeEffort !== "" ? "status.thinking" : "status.processing");
         _gotResult = false;
         _cancelled = false;
@@ -1176,7 +1421,7 @@ Singleton {
         var prompt_ = confirm ? systemPrompt.replace(_noConfirmSentence, "") : systemPrompt;
         if (customWorkDir !== "")
             prompt_ = prompt_.replace(_stateDirSentence, "Your working directory is " + customWorkDir + ", a directory the user chose: relative paths refer to it. ");
-        var cmd = cdWorkDir + provider.buildCommand({
+        var cmd = cdWorkDir + providerOrClaude.buildCommand({
             model: cliModel,
             effort: activeEffort,
             confirm: confirm,
@@ -1185,6 +1430,7 @@ Singleton {
             resumeId: sessionId,
             secretsScript: secretsScript,
             stateDir: homeDir + "/.local/state/dms-agent",
+            bridgeScript: bridgeScript,
             q: shellQuote
         });
 
@@ -1193,15 +1439,34 @@ Singleton {
         // stream-json input: the same pipe is what Cancel writes the
         // interrupt into. A provider with no stdin format (Qoder, Kimi) takes
         // the prompt as an argument and can only be stopped by a signal.
-        if (provider.stdinUserFormat)
-            props.input = JSON.stringify(provider.stdinUserFormat(prompt)) + "\n";
+        if (providerOrClaude.stdinUserFormat) {
+            var input = "";
+            // Registry bridges take a config line (model/effort/resumeId)
+            // before the user message; the claude CLI gets these as flags.
+            if (providerOrClaude.adapter) {
+                var cfg = { type: "config" };
+                if (cliModel) cfg.model = cliModel;
+                if (activeEffort) cfg.effort = activeEffort;
+                if (sessionId) cfg.resumeId = sessionId;
+                if (prompt_) cfg.systemPrompt = prompt_;
+                // Context transfer (step 4): the file is sent only on the
+                // first turn after a provider switch, then dropped — later
+                // turns go through the new provider's native history.
+                if (_pendingContextFile !== "") {
+                    cfg.contextFile = _pendingContextFile;
+                }
+                input += JSON.stringify(cfg) + "\n";
+            }
+            input += JSON.stringify(providerOrClaude.stdinUserFormat(prompt)) + "\n";
+            props.input = input;
+        }
         var p = claudeRunner.createObject(root, props);
         _claudeProcess = p;
         p.running = true;
     }
 
     function handleStreamLine(line) {
-        var events = provider.parseLine(line);
+        var events = providerOrClaude.parseLine(line);
         for (var i = 0; i < events.length; i++) handleStreamEvent(events[i]);
     }
 
@@ -1284,6 +1549,15 @@ Singleton {
             // After a provider switch the answer belongs to the chat that was
             // just cleared: it is dropped, not shown.
             if (sameProvider) finishResponse(tr("status.cancelled"));
+            // The cancelled turn was a transfer: its context must survive for
+            // a retry (including the message the user sent into it). The temp
+            // file itself is already spent — removed, not left behind.
+            if (_pendingContextFile !== "") {
+                var f = _pendingContextFile;
+                _pendingContextFile = "";
+                runQuietExit("rm -f " + shellQuote(f), null);
+            }
+            if (_carriedContext.length > 0) rearmCarriedContext();
             loadHistory();
             return;
         }
@@ -1292,12 +1566,21 @@ Singleton {
         // could not find. Keeping it would pin every later message to a session
         // that does not exist, and each retry would fail the same way.
         if (data.session_id && !data.is_error) sessionId = data.session_id;
-
+        // Context transfer: a failed or cancelled turn keeps the carried
+        // context for a retry (a retry sends the same conversation again);
+        // a success drops it — the native history of the new provider takes
+        // over. The temp file is removed either way.
+        if (data.is_error) {
+            if (_carriedContext.length > 0) rearmCarriedContext();
+            removeContextFile();
+        } else {
+            clearChatContext();
+        }
         // The cost line belongs to the providers that report a price. Qoder and
         // Kimi answer with total_cost_usd 0 and empty token counts — "$0.0000
         // (0→0 tokens)" is noise, not a price.
         lastCost = "";
-        var costKnown = provider.caps && provider.caps.cost;
+        var costKnown = providerOrClaude.caps && providerOrClaude.caps.cost;
         var cost = data.total_cost_usd;
         var tokens = data.usage;
         var tokensKnown = tokens && ((tokens.input_tokens || 0) + (tokens.output_tokens || 0) > 0);
@@ -1310,7 +1593,7 @@ Singleton {
 
         var response = Providers.resultText(data, _lastText);
         finishResponse(response || "(done)");
-        if (data.session_id && provider.caps && provider.caps.registryHistory) {
+        if (data.session_id && providerOrClaude.caps && providerOrClaude.caps.registryHistory) {
             // Qoder and Kimi leave no scannable trace of what this chat ran, so
             // the registry gets the id the moment it appears — and keeps it:
             // an existing entry holds the title the user may have renamed.
@@ -1326,8 +1609,9 @@ Singleton {
         }
     }
 
-    function finishResponse(text) {
-        addMessage("assistant", text);
+    function finishResponse(text, transferError) {
+        var msg = addMessage("assistant", text);
+        if (transferError) msg.transferError = true;
         busy = false; statusText = tr("status.ready");
         responseComplete(); notifyIfHidden(text);
     }

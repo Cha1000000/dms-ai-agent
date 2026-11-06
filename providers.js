@@ -293,11 +293,83 @@ function resultText(ev, lastText) {
 }
 
 function byId(id) {
-    return PROVIDERS[id] || PROVIDERS.claude;
+    // No fallback to claude: a deleted or mistyped provider id must be visible
+    // to the caller (AgentService guards on it), never silently substituted.
+    if (!id) return PROVIDERS.claude; // the default, not a substitution
+    return _registryDescriptors[id] || PROVIDERS[id] || undefined;
 }
 
 function all() {
     return Object.keys(PROVIDERS).map(function (k) { return PROVIDERS[k]; });
+}
+
+// --- Providers from providers.json (the external registry) ------------------
+// Loaded by AgentService.qml through registry.py (a Process, not here: a
+// .pragma library cannot run a program). setRegistry() replaces the previous
+// dynamic set in one go; the builtin five are never touched.
+var _registryDescriptors = {};
+
+function setRegistry(data) {
+    _registryDescriptors = {};
+    var providers = (data && data.providers) || {};
+    for (var id in providers) {
+        if (!providers.hasOwnProperty(id)) continue;
+        var entry = providers[id];
+        if (!entry || typeof entry !== "object" || !entry.adapter) continue;
+        if (!/^[a-z0-9-]+$/.test(id)) continue; // same rule as registry.py
+        if (entry.adapter !== "acp" && entry.adapter !== "codex" && entry.adapter !== "openai") continue;
+        _registryDescriptors[id] = {
+            id: id,
+            title: String(entry.title || id),
+            adapter: entry.adapter,
+            command: entry.command || "",
+            baseUrl: entry.baseUrl || "",
+            caps: {
+                askFirst: false,
+                cost: false,
+                stdinEnabled: true,
+                // The bridges read a {"type":"cancel"} line and end the turn
+                // with an error result — the interrupt the claude CLI speaks
+                // is not part of their protocol.
+                cancelViaStdin: true,
+                perSessionRestore: true,
+                registryHistory: true
+            },
+            // The prompt goes to the bridge's stdin (config line is prepended
+            // by the service); it never appears in argv or logs.
+            stdinUserFormat: function (text) {
+                return { type: "user", message: { role: "user",
+                         content: [{ type: "text", text: String(text) }] } };
+            },
+            buildCommand: function (opts) {
+                // The bridge is the executed program; the provider's agent
+                // command is its argument, quoted element by element. The
+                // openai adapter takes the base URL instead of a command.
+                var bridge = opts.bridgeScript || "";
+                if (!bridge) return "exit 3";
+                var args;
+                if (this.adapter === "openai") {
+                    if (!this.baseUrl) return "exit 3";
+                    args = [this.baseUrl];
+                } else {
+                    args = Array.isArray(this.command) ? this.command
+                        : String(this.command).split(/\s+/).filter(Boolean);
+                    if (!args.length) return "exit 3";
+                }
+                var env = this.adapter === "openai" ? "DMS_AGENT_OPENAI_PROVIDER=" + opts.q(this.id) + " " : "";
+                return env + "exec python3 " + opts.q(bridge) + " "
+                    + args.map(opts.q).join(" ") + " 2>/dev/null";
+            },
+            parseLine: PROVIDERS.claude.parseLine,
+            canUseTool: false,
+            aliasModels: false,
+        };
+    }
+}
+
+function registryAll() {
+    var ids = Object.keys(_registryDescriptors);
+    return all().concat(ids.map(function (k) { return _registryDescriptors[k]; }));
 }
 
 // The name in the chat's chip: the bare model name, cut to a length the chip

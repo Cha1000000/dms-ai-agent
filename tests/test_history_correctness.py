@@ -18,6 +18,9 @@ import os
 import re
 import subprocess
 import sys
+import uuid
+
+import pytest
 
 PLUGIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -187,3 +190,83 @@ def test_deleting_under_one_gateway_clears_the_other_one_too(tmp_path):
     # The transcript is one file, so the session is gone for both.
     assert sid not in data.get("cvc", {})
     assert sid not in data.get("claude", {}), data
+
+
+def test_openai_local_history_restore_and_delete(tmp_path):
+    home = tmp_path / "home"
+    cwd = tmp_path / "work"
+    cwd.mkdir()
+    state = home / ".local" / "state" / "dms-agent"
+    store = state / "openai-sessions"
+    store.mkdir(parents=True)
+    (state / "providers.json").write_text(json.dumps({"version": 1, "providers": {
+        "example": {"adapter": "openai", "baseUrl": "https://example.org/v1"}}, "keys": {}}))
+    sid = str(uuid.uuid4())
+    path = store / (sid + ".json")
+    path.write_text(json.dumps({"version": 1, "id": sid, "provider": "example", "workDir": str(cwd),
+                                "messages": [{"role": "user", "content": "hello"}]}))
+    out = run_history(home, cwd, "--provider", "example", "list", "--all-dirs")
+    assert [r["id"] for r in json.loads(out.stdout)] == [sid]
+    out = run_history(home, cwd, "--provider", "example", "restore", sid, str(cwd))
+    assert json.loads(out.stdout)["messages"] == [{"role": "user", "content": "hello"}]
+    out = run_history(home, cwd, "--provider", "example", "delete", sid)
+    assert json.loads(out.stdout)["deleted"] == 1
+    assert not path.exists()
+
+
+def test_registry_backed_list_has_no_twenty_session_limit(tmp_path):
+    home = tmp_path / "home"
+    cwd = tmp_path / "work"
+    cwd.mkdir()
+    for i in range(25):
+        out = run_history(home, cwd, "--provider", "qoder", "register", "session-%02d" % i, "title")
+        assert out.returncode == 0, out.stderr
+    out = run_history(home, cwd, "--provider", "qoder", "list", "--all-dirs")
+    assert len(json.loads(out.stdout)) == 25
+
+
+@pytest.mark.parametrize("provider", ["claude", "cvc", "cc9"])
+def test_all_dirs_includes_shared_registered_directories_without_limit(tmp_path, provider):
+    home = tmp_path / "home"
+    here = tmp_path / "here"
+    there = tmp_path / "there"
+    here.mkdir()
+    there.mkdir()
+    for i in range(25):
+        write_session(home, there, "session-%02d" % i, [
+            '{"type":"system","entrypoint":"sdk-cli"}',
+            json.dumps({"type": "user", "message": {"content": "hello %d" % i}}),
+        ])
+    run_history(home, there, "--provider", "cvc", "list")
+    local = run_history(home, here, "--provider", provider, "list")
+    assert json.loads(local.stdout) == []
+    out = run_history(home, here, "--provider", provider, "list", "--all-dirs")
+    assert out.returncode == 0, out.stderr
+    rows = json.loads(out.stdout)
+    assert {r["id"] for r in rows} == {"session-%02d" % i for i in range(25)}
+    assert all(r["workDir"] == str(there) for r in rows)
+    restored = run_history(home, here, "--provider", provider, "restore", "session-00")
+    assert json.loads(restored.stdout)["originDir"] == str(there)
+    write_session(home, here, "session-00", [
+        '{"type":"system","entrypoint":"sdk-cli"}',
+        '{"type":"user","message":{"content":"local duplicate"}}',
+    ])
+    restored = run_history(home, here, "--provider", provider, "restore", "session-00", str(there))
+    assert json.loads(restored.stdout)["messages"][0]["content"] == "hello 0"
+
+
+def test_restore_keeps_all_messages_and_all_text_blocks(tmp_path):
+    home = tmp_path / "home"
+    cwd = tmp_path / "work"
+    cwd.mkdir()
+    records = [{"type": "user", "message": {"content": "message %d" % i}}
+               for i in range(25)]
+    records.append({"type": "assistant", "message": {"content": [
+        {"type": "text", "text": "first"},
+        {"type": "tool_use", "id": "x"},
+        {"type": "text", "text": "second"},
+    ]}})
+    write_session(home, cwd, "long-session", [json.dumps(r) for r in records])
+    out = run_history(home, cwd, "--provider", "claude", "restore", "long-session")
+    messages = json.loads(out.stdout)["messages"]
+    assert [m["content"] for m in messages] == ["message %d" % i for i in range(25)] + ["first", "second"]
