@@ -37,7 +37,7 @@ _TITLE_MAX = 200
 
 def _load():
     try:
-        with open(REGISTRY_PATH) as fh:
+        with open(REGISTRY_PATH, encoding="utf-8") as fh:
             data = json.load(fh)
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
@@ -47,6 +47,20 @@ def _load():
 def _save(data):
     directory = os.path.dirname(REGISTRY_PATH)
     os.makedirs(directory, exist_ok=True)
+    # _load treats a corrupt file as empty, so the next write would replace
+    # every provider's list with just the one being written. Keep the broken
+    # file aside instead of destroying it.
+    try:
+        with open(REGISTRY_PATH, encoding="utf-8") as fh:
+            existing = fh.read()
+        if existing.strip():
+            try:
+                json.loads(existing)
+            except ValueError:
+                os.replace(REGISTRY_PATH,
+                           REGISTRY_PATH + ".corrupt-%d" % int(time.time()))
+    except (FileNotFoundError, OSError):
+        pass
     fd, tmp = tempfile.mkstemp(dir=directory, prefix=".sessions-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as fh:

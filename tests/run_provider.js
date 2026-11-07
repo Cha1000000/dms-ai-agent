@@ -75,6 +75,14 @@ if (fn === "kimi_caps") {
     }, arg));
 } else if (fn === "chipLabel") {
     out = chipLabel(arg.label, arg.max);
+} else if (fn === "cancelMessage") {
+    if (arg.data) setRegistry(arg.data);
+    out = cancelMessage(byId(arg.id), arg.requestId || 7);
+} else if (fn === "hintKey") {
+    if (arg.data) setRegistry(arg.data);
+    out = hintKey(byId(arg.id));
+} else if (fn === "descriptor_flag") {
+    out = !!(PROVIDERS[arg.id] && PROVIDERS[arg.id][arg.flag]);
 } else if (fn === "keepsModel") {
     out = keepsModel(PROVIDERS[arg.provider], arg.models, arg.saved);
 } else if (fn === "registry_set") {

@@ -86,8 +86,12 @@ def test_env_export_shell_quotes_safely(store):
     assert "ANTHROPIC_AUTH_TOKEN=sk-a' b" not in shell
 
 
-def test_env_export_shell_empty_without_key(store):
-    assert store.env_export_shell("cvc") == ""
+def test_env_export_shell_fails_closed_without_a_key(store):
+    # The CVC provider runs `eval $(env-export cvc) && claude`: an empty
+    # prefix would run the stock CLI on the user's own Anthropic login.
+    assert store.env_export_shell("cvc") == "false; "
+    # Other providers have no such prefix at all.
+    assert store.env_export_shell("claude") == ""
 
 
 def test_corrupt_file_does_not_crash(store):
@@ -164,6 +168,41 @@ def test_a_probe_that_errors_does_not_block(store, tmp_path, monkeypatch):
     claude.write_text("#!/bin/sh\nexit 3\n")
     claude.chmod(0o755)
     assert store.is_signed_in("claude") is True
+
+
+def test_claude_json_that_is_not_an_object_does_not_crash(store, tmp_path, monkeypatch):
+    _home(tmp_path, monkeypatch)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ["PATH"])
+    claude = bin_dir / "claude"
+    claude.write_text('#!/bin/sh\necho null\n')
+    claude.chmod(0o755)
+    assert store.is_signed_in("claude") is True
+
+
+def test_a_gateway_provider_needs_its_key(store, tmp_path, monkeypatch):
+    _home(tmp_path, monkeypatch)
+    registry.set_provider("gw", {"adapter": "openai", "baseUrl": "https://gw.example/v1"})
+    assert store.is_signed_in("gw") is False
+    store.set_api_key("gw", "sk-a")
+    assert store.is_signed_in("gw") is True
+
+
+def test_a_codex_provider_asks_codex_login_status(store, tmp_path, monkeypatch):
+    home = _home(tmp_path, monkeypatch)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ["PATH"])
+    codex = bin_dir / "codex"
+    codex.write_text('#!/bin/sh\n[ "$1 $2" = "login status" ] || exit 2\n'
+                     'echo "$MODE"\n')
+    codex.chmod(0o755)
+    registry.set_provider("cx", {"adapter": "codex", "command": ["codex", "exec", "--json"]})
+    monkeypatch.setenv("MODE", "Not logged in")
+    assert store.is_signed_in("cx") is False
+    monkeypatch.setenv("MODE", "Logged in")
+    assert store.is_signed_in("cx") is True
 
 
 # --- the CLI surface: the key must not travel through argv ---

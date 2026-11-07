@@ -81,3 +81,50 @@ def test_bad_entries_are_skipped():
     assert "noadapter" not in out["allIds"]
     # id, невалидный по правилу реестра (registry.py), тоже не проходит.
     assert "Bad/Id" not in out["allIds"]
+
+
+def test_a_registry_entry_cannot_shadow_a_builtin_provider():
+    out = run("registry_set", {"data": _registry({
+        "cvc": {"title": "Fake CVC", "adapter": "acp", "command": ["x"]},
+    })})
+    # The built-in descriptor is untouched and there is no duplicate id.
+    assert out["byId"]["cvc"]["title"] == "CheapVibeCode"
+    assert out["byId"]["cvc"]["adapter"] is None
+    assert out["allIds"].count("cvc") == 1
+
+
+def test_cancel_speaks_each_provider_protocol():
+    # The claude CLI and its gateways stop on control_request/interrupt.
+    claude = run("cancelMessage", {"id": "claude", "requestId": 9})
+    assert claude == {"type": "control_request", "request_id": "cancel_9",
+                      "request": {"subtype": "interrupt", "cancel_queued": True}}
+    cvc = run("cancelMessage", {"id": "cvc", "requestId": 9})
+    assert cvc["type"] == "control_request"
+    # A bridge provider reads its own small line; the claude interrupt was
+    # ignored by all three bridges (Stop fell through to SIGTERM).
+    data = _registry({"gw": {"adapter": "openai", "baseUrl": "https://x/v1"}})
+    gw = run("cancelMessage", {"data": data, "id": "gw", "requestId": 9})
+    assert gw == {"type": "cancel"}
+
+
+def test_sign_in_hints_name_the_adapter():
+    assert run("hintKey", {"id": "cvc"}) == "loginHint.cvc"
+    assert run("hintKey", {"id": "cc9"}) == "loginHint.cc9"
+    data = _registry({
+        "gw": {"adapter": "openai", "baseUrl": "https://x/v1"},
+        "cx": {"adapter": "codex", "command": ["codex", "exec", "--json"]},
+        "acp": {"adapter": "acp", "command": ["agent", "--acp"]},
+    })
+    assert run("hintKey", {"data": data, "id": "gw"}) == "loginHint.gateway"
+    assert run("hintKey", {"data": data, "id": "cx"}) == "loginHint.codex"
+    assert run("hintKey", {"data": data, "id": "acp"}) == "loginHint.generic"
+    assert run("hintKey", {"id": "no-such-provider"}) == "loginHint.generic"
+
+
+def test_live_checks_are_not_cached_by_the_chat():
+    # cc9 readiness is a running gateway, cvc's is a stored key that can be
+    # deleted mid-session: neither may be cached for the shell's lifetime.
+    assert run("descriptor_flag", {"id": "cc9", "flag": "liveSignIn"}) is True
+    assert run("descriptor_flag", {"id": "cvc", "flag": "liveSignIn"}) is True
+    for pid in ("claude", "qoder", "kimi"):
+        assert run("descriptor_flag", {"id": pid, "flag": "liveSignIn"}) is False

@@ -103,7 +103,7 @@ Then, in DMS:
 | Setting | Default | |
 |---|---|---|
 | Agent (provider) | `Claude Code` | which agent CLI runs the chat: the five built-in ones, or any you add yourself in the registry — see [Providers](#providers) |
-| Model | `haiku` | `haiku`, `sonnet`, `opus` or a full id like `claude-opus-4-7`; the dropdown lists the provider's own catalog — for Claude Code the same models as `/model` in the CLI (minus Fable), fetched from it |
+| Model | `haiku` | `haiku`, `sonnet`, `opus` or a full id like `claude-opus-5-5`; the chat's model chip opens the provider's own catalog — for Claude Code the same models as `/model` in the CLI (minus Fable), fetched from it. This settings field is a free-form id persisted per provider |
 | Effort | auto | `low`, `medium`, `high`, `xhigh`, `max` (`--effort`); also switchable in the chat toolbar, levels depend on the model |
 | Per-session model | on | opening a chat from the history switches to the model and effort it was last used with (read from its transcript). A chat run on *auto* comes back with the level the CLI actually used |
 | System Prompt | built-in | your own instructions for the agent |
@@ -117,7 +117,7 @@ Then, in DMS:
 | Custom colors | off | overrides the key colors of the chosen theme: accent, panel and bubbles, text, borders, and the two ends of the neon gradient |
 | Advanced: edit every color | off | one color per role of the theme; wins over the key colors. Turn a switch off to go back to the theme |
 | Working directory | empty | where the agent starts, like `claude` run in a terminal there (that folder's `CLAUDE.md` and project settings apply). Empty = a private folder, `~/.local/state/dms-agent`. Each folder has its own chats and history; changing it starts a new chat. The folder button in the chat also lists the last 8 folders you applied, one click switches to one |
-| Permissions | Ask first | *Ask first*: Allow / Deny dialog before each command or file change; *No confirmation*: runs everything immediately (`--dangerously-skip-permissions`) |
+| Permissions | Ask first | *Ask first*: Allow / Deny dialog before each command or file change; *No confirmation*: runs everything immediately (`--dangerously-skip-permissions`). Kept per provider: a visit to one that cannot ask never changes the choice for the others |
 | Update notice | off | once per boot, check this repository and notify when a newer version exists; installs nothing |
 | Whisper Model | `Auto` | `large-v3-turbo` on an NVIDIA GPU, `small` on CPU |
 | Microphone | System default | dropdown of the capture devices PipeWire knows, under the names the audio settings show |
@@ -143,14 +143,15 @@ not; the chat refuses to start on the same condition and says the same thing. A 
 deleted or mistyped is reported as unknown — the chat never falls back to Claude silently.
 
 Each provider has its own model list, its own effort levels and its own session history in the
-chat. Deleting a chat deletes its transcript as well — except Kimi Code, whose CLI has no delete
-command: the chat disappears from the list, the files stay (and the session can still be resumed
-from the CLI).
+chat. Deleting a chat deletes its transcript as well — except where the agent owns its own
+session storage: Kimi Code (no delete command) and custom ACP/Codex providers. There the chat
+disappears from the list and the agent's own session files stay (it can still be resumed from its
+CLI). A failed delete keeps the row and says so instead of hiding a live session.
 
 #### Adding a provider
 
-Under the built-in list there is **Custom providers**: a form, plus **Edit JSON** for one entry at
-a time (that entry only — the keys are never shown). An entry is made of four fields:
+The **Custom providers** section sits above the Agent selector: a form, plus **Edit JSON** for one
+entry at a time (that entry only — the keys are never shown). An entry is made of four fields:
 
 | Field | Meaning |
 |---|---|
@@ -160,12 +161,15 @@ a time (that entry only — the keys are never shown). An entry is made of four 
 | `command` | for `acp` and `codex`: the program and its arguments, e.g. `gemini --experimental-acp` |
 | `baseUrl` | for `openai`: the endpoint, e.g. `https://gateway.example.com/v1` |
 
-Anything else in JSON is rejected; the key is not a form field. It is typed into the key field
-below the form and goes straight into the store (stdin, never argv, never the settings file).
+Anything else in JSON is rejected (the store enforces the same rule); the key is not a JSON field.
+It is typed into the key field of the form — shown for OpenAI gateways, the only adapter that reads
+one — and goes straight into the store (stdin, never argv, never the settings file).
 
-- **ACP** — any agent speaking the Agent Client Protocol: Gemini CLI, OpenCode, Kimi and others.
+- **ACP** — any agent speaking the Agent Client Protocol: Gemini CLI, OpenCode and others.
   The model catalog comes from the agent's own `session/new` reply, so an agent that is not signed
   in shows "the model list of this provider is unavailable" instead of borrowing Claude's list.
+  When the agent asks for permission (some do, depending on their own settings), the chat shows
+  the same Allow / Deny dialog; the plugin cannot force or suppress those requests.
 - **Codex** — `codex exec --json`; the catalog and the sign-in status come from the CLI itself
   (`codex debug models`, `codex login status`).
 - **OpenAI gateway** — a plain chat-completions endpoint. **Text chat only: no tools, no MCP, no
@@ -174,9 +178,9 @@ below the form and goes straight into the store (stdin, never argv, never the se
 
 Two confirmations guard the trusted-file rule. A new or changed `command` is shown in full and has
 to be confirmed — it runs on every message. A changed `baseUrl` is confirmed too, because the key
-saved for that provider would be sent to the new address. Custom ACP and Codex providers run
-their tools without an Ask first dialog: the plugin has no permission channel for them, so do not
-add an agent you would not run unattended.
+saved for that provider would be sent to the new address. Custom providers have no Ask-first
+*launch* mode: Codex and OpenAI gateways run unattended, and an ACP agent's own permission
+requests are shown as the dialog above. Do not add an agent you would not run unattended.
 
 The store is `$XDG_STATE_HOME/dms-agent/providers.json` (by default
 `~/.local/state/dms-agent/providers.json`, mode 0600). It holds `providers` and `keys`; a corrupt
@@ -267,9 +271,10 @@ same without any markup. Your own messages get a single button.
 
 ### Language
 
-Setting **Language** to a code translates the interface into it as well, not just
-speech recognition — on `auto` the interface follows your locale. English and Russian
-ship with the plugin; another language is a table in `i18n.js` and nothing else.
+Setting **Language** to a code translates the chat interface into it as well, not just
+speech recognition — on `auto` the interface follows your locale. English and Russian ship with
+the plugin; another language is a table in `i18n.js` and nothing else. The settings page itself is
+English (its labels come from DMS widgets, the plugin's own strings there are English too).
 
 ### History, clearing and switching providers
 
@@ -287,9 +292,9 @@ the id is verified rather than trusted.
 
 Changing the provider, or opening a chat that belongs to another folder, starts a new native
 session — tools, thinking and attachments do not travel. The text does: the user and assistant
-messages so far are re-sent as plain context on the first message to the new session, and the chat
-says so. If that first attempt fails or is cancelled, the context is kept for a retry. A target
-that cannot take the context says so and leaves the previous chat untouched.
+messages so far are re-sent as plain context on the first message to the new session (prepended to
+the prompt for the CLI providers, as a first-turn context file for the ACP/Codex/gateway bridges),
+and the chat says so. If that first attempt fails or is cancelled, the context is kept for a retry.
 
 
 ### Session name
@@ -336,9 +341,11 @@ the chat panel stays in memory with the QML it was built from.
   the settings you can switch **Permissions** to *No confirmation*; then Claude Code runs with
   `--dangerously-skip-permissions` and the agent executes commands **without asking**, with
   unrestricted shell access as your user. That makes "open X, move it to workspace 2" instant —
-  keep it in mind. CheapVibeCode, Qoder, Kimi Code and custom ACP/Codex providers always run
-  unattended: the plugin has no working permission handshake for them. Prompts, window lists and
-  attachments go to whichever provider you picked in either mode.
+  keep it in mind. CheapVibeCode, Qoder, Kimi Code, Codex and OpenAI gateways always run
+  unattended: the plugin has no working permission handshake for them. The choice is stored per
+  provider — one visit to an unattended provider does not silently turn off Ask first for Claude
+  Code. An ACP agent that requests permission itself still shows the Allow / Deny dialog.
+  Prompts, window lists and attachments go to whichever provider you picked in either mode.
 - **Billing follows the CLI you picked, not this plugin.** It shells out to the agent CLI, so
   whatever that is authenticated with answers: for Claude Code a subscription or an API key on
   your own account; for CheapVibeCode and an OpenAI gateway the key you store in the plugin. The

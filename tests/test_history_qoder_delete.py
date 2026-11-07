@@ -60,6 +60,7 @@ def fake_qodercli(tmp_path, sessions, log):
         "sessions = %r\n"
         "args = sys.argv[1:]\n"
         "if '--list-sessions' in args:\n"
+        "    open(log, 'a').write('cwd %%s\\n' %% __import__('os').getcwd())\n"
         "    for i, (title, uid) in enumerate(sessions, start=1):\n"
         "        print('  %%d. %%s (2h ago) [%%s]' %% (i, title, uid))\n"
         "    sys.exit(0)\n"
@@ -94,7 +95,7 @@ def test_delete_asks_the_cli_to_delete_the_session(tmp_path):
     bin_dir = fake_qodercli(tmp_path, [("Привет", sid), ("Другая", other)], log)
 
     out = run_history(home, cwd, "--provider", "qoder", "delete", sid, path=bin_dir)
-    assert json.loads(out.stdout) == {"deleted": 1}, out.stdout
+    assert json.loads(out.stdout) == {"deleted": 1, "removed": 1}, out.stdout
     calls = log.read_text()
     # The index comes from the list, and it is the one that belongs to the
     # session being deleted — the second entry must not be touched.
@@ -118,26 +119,46 @@ def test_delete_finds_the_right_index_when_the_order_differs(tmp_path):
     ], log)
 
     out = run_history(home, cwd, "--provider", "qoder", "delete", sid, path=bin_dir)
-    assert json.loads(out.stdout) == {"deleted": 1}, out.stdout
+    assert json.loads(out.stdout) == {"deleted": 1, "removed": 1}, out.stdout
     calls = log.read_text()
     assert "delete 2" in calls, calls
     assert "removed " + sid in calls, calls
 
 
-def test_the_registry_entry_goes_even_without_the_cli(tmp_path):
+def test_the_registry_entry_stays_when_the_cli_cannot_delete(tmp_path):
+    """The registry is Qoder's only listing source. Dropping the entry after a
+    failed delete hid a live session from history forever; the failure is now
+    reported (removed=0) and the panel keeps the row."""
     home, cwd = tmp_path / "home", tmp_path / "work"
     cwd.mkdir(parents=True)
     sid = "dddddddd-eeee-ffff-0000-111111111111"
     make_qoder_session(home, cwd, sid)
     run_history(home, cwd, "--provider", "qoder", "register", sid, "Привет")
 
-    # No qodercli on PATH: the plugin's own record of the session must still
-    # be dropped, so the panel does not offer a session that is not there.
     empty = tmp_path / "empty-bin"
     empty.mkdir()
     out = run_history(home, cwd, "--provider", "qoder", "delete", sid, path=empty)
-    assert json.loads(out.stdout) == {"deleted": 0}, out.stdout
-    assert sid not in registry_data(home).get("qoder", {})
+    assert json.loads(out.stdout) == {"deleted": 0, "removed": 0}, out.stdout
+    assert sid in registry_data(home).get("qoder", {})
+
+
+def test_the_index_is_looked_up_in_the_session_directory(tmp_path):
+    """`qodercli --list-sessions` shows only the current project: an index
+    measured in the chat's directory either does not exist or belongs to a
+    different session, and applying it with cwd=<session dir> to
+    --delete-session could remove the wrong one."""
+    home = tmp_path / "home"
+    here, there = tmp_path / "here", tmp_path / "there"
+    here.mkdir()
+    there.mkdir()
+    sid = "ffffffff-0000-1111-2222-333333333333"
+    make_qoder_session(home, there, sid)
+    run_history(home, there, "--provider", "qoder", "register", sid, "Привет")
+    log = tmp_path / "calls.log"
+    bin_dir = fake_qodercli(tmp_path, [("Привет", sid)], log)
+    out = run_history(home, here, "--provider", "qoder", "delete", sid, path=bin_dir)
+    assert json.loads(out.stdout) == {"deleted": 1, "removed": 1}, out.stdout
+    assert "cwd " + str(there) in log.read_text()
 
 
 def test_delete_of_a_session_the_registry_does_not_know_is_refused(tmp_path):
@@ -150,5 +171,5 @@ def test_delete_of_a_session_the_registry_does_not_know_is_refused(tmp_path):
     log = tmp_path / "calls.log"
     bin_dir = fake_qodercli(tmp_path, [("Привет", sid)], log)
     out = run_history(home, cwd, "--provider", "qoder", "delete", sid, path=bin_dir)
-    assert json.loads(out.stdout) == {"deleted": 0}, out.stdout
+    assert json.loads(out.stdout) == {"deleted": 0, "removed": 0}, out.stdout
     assert not log.exists() or log.read_text() == ""

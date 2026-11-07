@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import sys
+import urllib.request
 
 CVC_BASE_URL = "https://ru.cheapvibecode.ru"
 # The local gateway of the cc9 wrapper (see ~/.local/bin/cc9).
@@ -19,6 +20,32 @@ CC9_ROUTER_URL = "http://127.0.0.1:20128"
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import registry  # noqa: E402
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect carrying the Authorization header.
+
+    urllib copies request headers into the redirected request, so a 30x from
+    the gateway would send the user's key to whatever origin (or plain-HTTP
+    address) the Location names. The same rule is pinned for the OpenAI
+    gateway in models.py and test_security_contract.py."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def cvc_models(timeout=15):
+    """GET /v1/models with the stored key; raises on any failure."""
+    key = get_api_key("cvc")
+    if not key:
+        raise RuntimeError("no api key")
+    req = urllib.request.Request(
+        CVC_BASE_URL + "/v1/models",
+        headers={"Authorization": "Bearer " + key},
+    )
+    opener = urllib.request.build_opener(_NoRedirect())
+    with opener.open(req, timeout=timeout) as resp:
+        return json.load(resp)
 
 
 def get_api_key(provider):
@@ -47,25 +74,24 @@ def export_env(provider):
 def env_export_shell(provider):
     """Shell `export` lines for `eval $(...)`; empty when there is no key."""
     import shlex
+    env = export_env(provider)
+    if provider == "cvc" and not env:
+        # Providers.js builds `eval $(...) && claude ...`. An empty prefix
+        # would let the stock CLI run on the user's own Anthropic login — a
+        # silent switch of backend. `false` makes the `&&` chain stop.
+        return "false; "
     return "".join(
         "export %s=%s; " % (name, shlex.quote(value))
-        for name, value in export_env(provider).items()
+        for name, value in env.items()
     )
 
 
 def test_cvc_key():
     """Short GET /v1/models with the stored key. Returns "ok <n>" | "missing" | "fail: ..."."""
-    import urllib.request
-    key = get_api_key("cvc")
-    if not key:
+    if not get_api_key("cvc"):
         return "missing"
-    req = urllib.request.Request(
-        CVC_BASE_URL + "/v1/models",
-        headers={"Authorization": "Bearer " + key},
-    )
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            payload = json.load(resp)
+        payload = cvc_models()
         rows = payload.get("data") if isinstance(payload, dict) else None
         return "ok %d" % (len(rows) if isinstance(rows, list) else 0)
     except Exception as e:
@@ -120,10 +146,35 @@ def is_signed_in(provider):
             # Not an answer, so no answer at all: an old CLI, a wrapper, a
             # different locale. The run itself decides.
             return True
+        if not isinstance(data, dict):
+            # JSON that is not an object says nothing about the login.
+            return True
         # An answer that says nothing about the login is a definite "no":
         # the chat must point at the login command instead of failing with a
         # wall of auth errors.
         return bool(data.get("loggedIn"))
+    # A provider from providers.json: its adapter decides what "signed in"
+    # means. ACP has no cheap probe (starting the agent just to ask costs a
+    # process and may prompt), so it stays unknown-but-allowed; Codex and an
+    # OpenAI gateway are explicit.
+    try:
+        entry = registry.load().get("providers", {}).get(provider)
+    except registry.RegistryError:
+        entry = None
+    if isinstance(entry, dict):
+        adapter = entry.get("adapter")
+        if adapter == "openai":
+            return bool(get_api_key(provider))
+        if adapter == "codex":
+            import subprocess
+            try:
+                out = subprocess.run(["codex", "login", "status"],
+                                     capture_output=True, text=True, timeout=20)
+            except (OSError, subprocess.SubprocessError):
+                return True  # no answer — let the run decide
+            # codex-cli 0.167 prints "Not logged in" with exit status 0.
+            return "not logged in" not in (out.stdout + out.stderr).lower()
+        return True
     return True
 
 

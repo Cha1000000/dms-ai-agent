@@ -52,7 +52,7 @@ def test_delete_removes_registry_entry_too(tmp_path):
     assert sid in registry_data(home).get("cvc", {})
 
     out = run_history(home, cwd, "--provider", "cvc", "delete", sid)
-    assert json.loads(out.stdout) == {"deleted": 1}
+    assert json.loads(out.stdout) == {"deleted": 1, "removed": 1}
     assert sid not in registry_data(home).get("cvc", {})
 
 
@@ -61,4 +61,4 @@ def test_delete_of_unknown_session_reports_zero(tmp_path):
     cwd = tmp_path / "work"
     cwd.mkdir(parents=True)
     out = run_history(home, cwd, "--provider", "cvc", "delete", "no-such-id")
-    assert json.loads(out.stdout) == {"deleted": 0}
+    assert json.loads(out.stdout) == {"deleted": 0, "removed": 0}

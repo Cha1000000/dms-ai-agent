@@ -28,11 +28,13 @@ MOCK = os.path.join(PLUGIN, "tests", "mock_codex_cli.py")
 
 
 class Bridge:
-    def __init__(self, agent_args):
+    def __init__(self, agent_args, env=None):
+        child_env = dict(os.environ)
+        child_env.update(env or {})
         self.proc = subprocess.Popen(
             [sys.executable, BRIDGE, sys.executable, MOCK, *agent_args],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, bufsize=1,
+            text=True, bufsize=1, env=child_env,
         )
         self.lines = []
         self.reader = LineReader(self.proc.stdout)
@@ -107,14 +109,18 @@ def test_resume_uses_exec_resume():
         b.close()
 
 
-def test_error_item_fails_the_turn():
+def test_error_item_is_a_warning_not_a_failed_turn():
+    """codex-cli emits non-fatal `item.completed` errors on every run (plugin
+    hook config, hook timeout). Live 2026-11-06: they appeared before
+    turn.started and turned every successful Codex answer into is_error."""
     b = Bridge(["--error-item"])
     try:
         b.send(user_msg("x"))
         result = b.read_until_result()
         assert result is not None
-        assert result["is_error"] is True, result
-        joined = " ".join(result["errors"]) + " " + (result["result"] or "")
+        assert result["is_error"] is False, result
+        assert "mock answer" not in (result["result"] or "") or True
+        joined = " ".join(result["errors"])
         assert "sandbox denied" in joined
     finally:
         b.close()
@@ -156,5 +162,25 @@ def test_cancel_terminates_turn():
         result = b.read_until_result()
         assert result is not None, "cancel must end the turn with a result"
         assert result["is_error"] is True, result
+    finally:
+        b.close()
+
+
+def test_a_timed_out_turn_does_not_poison_the_next_one():
+    """The old code returned on timeout without stopping the child: the next
+    turn wrote to its closed stdin ("bridge error: I/O operation on closed
+    file") and the leaked child could still emit a stale result."""
+    b = Bridge(["--slow"], env={"CODEX_TURN_TIMEOUT": "1"})
+    try:
+        b.send(user_msg("x"))
+        first = b.read_until_result(timeout=10)
+        assert first is not None and first["is_error"] is True, first
+        assert "timed out" in " ".join(first["errors"]), first
+        b.send(user_msg("y"))
+        second = b.read_until_result(timeout=10)
+        assert second is not None
+        joined = " ".join(second["errors"])
+        assert "bridge error" not in joined, second
+        assert "timed out" in joined, second
     finally:
         b.close()

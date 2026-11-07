@@ -32,7 +32,7 @@ while [ $# -gt 0 ]; do
         --no-voice) WITH_VOICE=0; shift ;;
         --voice-venv) REUSE_VENV="${2:?--voice-venv needs a path}"; shift 2 ;;
         --no-model) WITH_MODEL=0; shift ;;
-        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
@@ -169,6 +169,7 @@ Next steps in DMS:
 
 Make sure the agent CLI you will use is logged in — for the default Claude Code
 that is: run 'claude' once in a terminal. Other providers (CheapVibeCode,
-Qoder, Kimi Code) are switched in Plugin settings → Agent; each signs in on its
-own (their own CLI login or an API key).
+9Router/cc9, Qoder, Kimi Code, or your own ACP/Codex/gateway entries) are
+switched in Plugin settings → Agent; each signs in on its own (their own CLI
+login or an API key).
 EOF

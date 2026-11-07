@@ -7,8 +7,10 @@ session/prompt, session/request_permission, session/update chunks and
 session/cancel. Configurable quirks per test via argv flags.
 """
 import json
+import os
 import sys
 import threading
+import time
 
 quirks = set(sys.argv[1:])
 
@@ -151,12 +153,13 @@ def handle_request(req):
             "sessionId": sid, "update": {"sessionUpdate": "agent_message_chunk",
                                           "content": {"type": "text", "text": "echo:" + text}}}})
         if "--ask" in quirks:
-            rid = next_id()
+            rid = "perm-string-1" if "--string-permission-id" in quirks else next_id()
             send({"jsonrpc": "2.0", "id": rid, "method": "session/request_permission",
                   "params": {"sessionId": sid, "options": [
                       {"optionId": "opt-allow", "name": "Allow", "kind": "allow_once"},
                       {"optionId": "opt-reject", "name": "Reject", "kind": "reject_once"},
-                  ], "toolCall": {"toolCallId": "t1", "title": "run something"}}})
+                  ], "toolCall": {"toolCallId": "t1", "title": "run something",
+                                  "kind": "execute", "rawInput": {"command": "ls -la"}}}})
             # Stop here: the test drives the next step.
             state["prompting"] = "waiting-permission"
             return
@@ -189,6 +192,11 @@ def handle_request(req):
 def finish_prompt_after_permission(resp):
     """The permission answer arrived: close out the prompt that asked."""
     outcome = ((resp or {}).get("result") or {}).get("outcome") or {}
+    # ACP v1 RequestPermissionOutcome.selected: a chosen option MUST use this
+    # discriminator. A client that invents "chosen" is not understood by a
+    # spec-compliant agent.
+    if "optionId" in outcome and outcome.get("outcome") != "selected":
+        _die("permission outcome must be 'selected', got %r" % (outcome.get("outcome"),))
     allow = outcome.get("optionId") == "opt-allow"
     sid = state.get("session") or SESSION
     send({"jsonrpc": "2.0", "method": "session/update", "params": {
@@ -201,6 +209,10 @@ def finish_prompt_after_permission(resp):
 
 
 def main():
+    for q in quirks:
+        if q.startswith("--pidfile="):
+            with open(q.split("=", 1)[1], "w") as fh:
+                fh.write(str(os.getpid()))
     for line in IN:
         line = line.strip()
         if not line:
@@ -214,6 +226,11 @@ def main():
             finish_prompt_after_permission(req)
             continue
         handle_request(req)
+    if "--ignore-eof" in quirks:
+        # A real agent busy in a turn does not necessarily exit when its stdin
+        # closes; the bridge must terminate it, not wait for EOF.
+        while True:
+            time.sleep(1)
 
 
 if __name__ == "__main__":

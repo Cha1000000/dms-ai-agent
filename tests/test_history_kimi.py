@@ -96,7 +96,7 @@ def test_delete_removes_the_registry_entry_and_keeps_the_files(tmp_path):
     reg = run_history(home, state_home, "register", "session_demo-1", "demo")
     assert json.loads(reg.stdout) == {"registered": 1}
     out = run_history(home, state_home, "delete", "session_demo-1")
-    assert json.loads(out.stdout) == {"deleted": 1}
+    assert json.loads(out.stdout) == {"deleted": 1, "removed": 1}
     # The wire log is untouched: kimi has no delete command (plan stage 4).
     assert (sdir / "agents" / "main" / "wire.jsonl").is_file()
     assert json.loads(run_history(home, state_home, "list").stdout) == []
@@ -111,7 +111,7 @@ def test_delete_all_keeps_the_files_too(tmp_path):
     state_home = tmp_path / "state"
     run_history(home, state_home, "register", "session_demo-1", "demo")
     out = run_history(home, state_home, "delete-all")
-    assert json.loads(out.stdout) == {"deleted": 1}
+    assert json.loads(out.stdout) == {"deleted": 1, "failed": 0}
     assert (sdir / "agents" / "main" / "wire.jsonl").is_file()
 
 

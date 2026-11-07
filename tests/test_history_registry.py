@@ -33,8 +33,10 @@ def state(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(state_dir))
     monkeypatch.setattr(sr, "REGISTRY_PATH", sr._registry_path())
     monkeypatch.setattr(prov_reg, "REGISTRY_PATH", prov_reg._registry_path())
-    prov_reg.set_provider("my-acp", {"title": "ACP тест", "adapter": "acp"})
-    prov_reg.set_provider("my-codex", {"title": "Codex тест", "adapter": "codex"})
+    prov_reg.set_provider("my-acp", {"title": "ACP тест", "adapter": "acp",
+                                    "command": ["agent", "--acp"]})
+    prov_reg.set_provider("my-codex", {"title": "Codex тест", "adapter": "codex",
+                                      "command": ["codex", "exec", "--json"]})
     work = tmp_path / "work"
     work.mkdir()
     monkeypatch.chdir(work)
@@ -110,11 +112,11 @@ def test_same_id_in_two_providers_stays_two_sessions(state):
 def test_delete_removes_registry_entry_only(state):
     sr.add("my-acp", "gone", "Сносим", state["work"])
     run = run_history(["--provider=my-acp", "delete", "gone"])
-    assert json.loads(run.stdout) == {"deleted": 1}
+    assert json.loads(run.stdout) == {"deleted": 1, "removed": 1}
     assert sr.list("my-acp") == []
 
 
 def test_delete_unknown_id_reports_failure(state):
     run = run_history(["--provider=my-acp", "delete", "nope"])
     assert run.returncode == 0
-    assert json.loads(run.stdout) == {"deleted": 0}
+    assert json.loads(run.stdout) == {"deleted": 0, "removed": 0}

@@ -210,11 +210,13 @@ def test_delete_removes_transcript_sidecar_and_registry_entry(tmp_path):
     run_history(home, cwd, "--provider", "qoder", "register", sid, "Привет")
     out = run_history(home, cwd, "--provider", "qoder", "delete", sid)
     # Without a qodercli that knows this session the delete cannot happen.
-    assert json.loads(out.stdout) == {"deleted": 0}
+    assert json.loads(out.stdout) == {"deleted": 0, "removed": 0}
     assert path.exists()
-    # The registry entry goes anyway: the panel must not offer a session that
-    # is not there.
-    assert sid not in registry_data(home).get("qoder", {})
+    # The registry is the ONLY listing source for Qoder, so an entry whose
+    # session could not be removed must stay: hiding it would lose a live
+    # session from history without deleting anything (plan: the deletion
+    # error is not hidden).
+    assert sid in registry_data(home).get("qoder", {})
 
 
 def test_delete_refuses_a_session_the_registry_does_not_know(tmp_path):
@@ -225,7 +227,7 @@ def test_delete_refuses_a_session_the_registry_does_not_know(tmp_path):
     sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     path = make_qoder_session(home, cwd, sid)
     out = run_history(home, cwd, "--provider", "qoder", "delete", sid)
-    assert json.loads(out.stdout) == {"deleted": 0}
+    assert json.loads(out.stdout) == {"deleted": 0, "removed": 0}
     assert path.exists()
 
 
@@ -253,9 +255,11 @@ def test_delete_all_stays_inside_the_working_directory(tmp_path):
     run_history(home, here, "--provider", "qoder", "register", sid_here, "Здесь")
     run_history(home, there, "--provider", "qoder", "register", sid_there, "Там")
     out = run_history(home, here, "--provider", "qoder", "delete-all")
-    # Without a qodercli that knows the session it cannot be removed.
-    assert json.loads(out.stdout) == {"deleted": 0}
+    # Without a qodercli that knows the session it cannot be removed. The
+    # entry stays (the registry is the only listing) and the failure is
+    # reported instead of silently hiding a live session.
+    assert json.loads(out.stdout) == {"deleted": 0, "failed": 1}
     assert path_here.exists()
     left = registry_data(home).get("qoder", {})
-    assert sid_here not in left
+    assert sid_here in left
     assert sid_there in left

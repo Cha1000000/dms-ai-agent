@@ -39,7 +39,12 @@ def agent():
         if method == "initialize":
             result = {"protocolVersion": 1}
         elif method in ("session/new", "session/load"):
-            result = {"configOptions": [] if scenario == "missing" else options()}
+            if scenario == "load-missing-config":
+                # A LoadSessionResponse may omit configOptions (ACP v1:
+                # optional). The new-session answer still has them.
+                result = {"configOptions": [] if method == "session/load" else options()}
+            else:
+                result = {"configOptions": [] if scenario == "missing" else options()}
             if method == "session/new":
                 result["sessionId"] = "session-1"
         elif method == "session/set_config_option":
@@ -107,6 +112,22 @@ def test_configured_turn_preserves_context(tmp_path):
         bridge.send({"type": "config", "model": "large", "contextFile": str(context)})
         bridge.send(user_msg("second"))
         result = bridge.read_until_result()
+        assert result["is_error"] is False, result
+        assert result["result"] == "Hello world"
+    finally:
+        bridge.close()
+
+
+def test_a_resume_without_config_options_still_runs(tmp_path):
+    """LoadSessionResponse.configOptions is optional. The service always sends
+    a model, so failing here made every resumed turn of a spec-compliant agent
+    unusable (the session keeps the model it was created with)."""
+    bridge = start("load-missing-config")
+    try:
+        bridge.send({"type": "config", "model": "large", "resumeId": "session-1"})
+        bridge.send(user_msg("hello"))
+        result = bridge.read_until_result()
+        assert result is not None, "no result"
         assert result["is_error"] is False, result
         assert result["result"] == "Hello world"
     finally:

@@ -185,3 +185,16 @@ def test_registry_path_defaults_under_home(tmp_path):
     env.pop("XDG_STATE_HOME", None)
     assert _print_registry_path(env) == str(
         tmp_path / "home" / ".local" / "state" / "dms-agent" / "sessions.json")
+
+
+def test_a_corrupt_registry_is_kept_aside_not_destroyed(registry):
+    """_load treats a corrupt file as empty; the next write must not silently
+    replace every provider's list with the one entry being added."""
+    with open(registry.REGISTRY_PATH, "w") as fh:
+        fh.write('{"claude": {"sess-1": {"title": "x"')  # truncated
+    registry.add("qoder", "s2", "New", "/tmp")
+    backups = [p for p in os.listdir(os.path.dirname(registry.REGISTRY_PATH))
+               if ".corrupt-" in p]
+    assert backups, os.listdir(os.path.dirname(registry.REGISTRY_PATH))
+    assert open(os.path.join(os.path.dirname(registry.REGISTRY_PATH), backups[0])).read().startswith('{"claude"')
+    assert json.load(open(registry.REGISTRY_PATH))["qoder"]["s2"]["title"] == "New"

@@ -103,7 +103,7 @@ def openai_session(sid):
             return "", None
         state = os.path.expanduser(os.environ.get("XDG_STATE_HOME") or "~/.local/state")
         path = os.path.join(state, "dms-agent", "openai-sessions", sid + ".json")
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
         if (not isinstance(data, dict) or data.get("version") != 1 or data.get("id") != sid
                 or data.get("provider") != provider or not isinstance(data.get("workDir"), str)
@@ -122,7 +122,7 @@ def is_agent_session(path):
     "entrypoint" is still an agent session. The scan therefore goes on until it
     finds a record that has the field."""
     try:
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             for i, line in enumerate(fh):
                 if i > 50:
                     break
@@ -145,7 +145,7 @@ def custom_title(path):
     """The name given with /rename in the CLI or from this plugin: Claude Code
     keeps it as "custom-title" records in the transcript, the last one wins."""
     name = ""
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             if '"custom-title"' not in line:
                 continue
@@ -183,14 +183,17 @@ def forget_synced(ids):
         pass  # the session is gone here anyway; the vault keeps its copy as before
 
 
-def qoder_session_index(sid):
+def qoder_session_index(sid, work_dir=None):
     """The index qodercli --delete-session wants for this session id.
 
     The CLI lists its sessions as "  N. Title (age) [uuid]"; the index is the
     position in that list. It is matched on the uuid, never on the position
-    the plugin remembers — the list grows and shrinks."""
+    the plugin remembers — the list grows and shrinks. The listing is scoped to
+    the session's own working directory: `qodercli --list-sessions` only shows
+    the current project, so measuring the index elsewhere either finds nothing
+    or numbers a different session."""
     try:
-        out = subprocess.run(["qodercli", "--list-sessions"],
+        out = subprocess.run(["qodercli", "--list-sessions"], cwd=work_dir,
                              capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -218,7 +221,7 @@ def delete_via_cli(provider, sid, work_dir):
                 pass
             shutil.rmtree(b + sid, ignore_errors=True)  # the sidecar dir
         return True
-    index = qoder_session_index(sid)
+    index = qoder_session_index(sid, work_dir)
     if index is None:
         return False
     try:
@@ -276,7 +279,7 @@ if action == "list":
                 continue
             title = ""
             try:
-                fh = open(f)
+                fh = open(f, encoding="utf-8")
             except OSError:
                 continue
             with fh:
@@ -309,7 +312,13 @@ if action == "list":
                 # An "if absent" write: re-reading the history must not move a
                 # session's place in the panel, and a rename must survive.
                 if name or title:
-                    sessions_registry.add_if_absent(provider, sid, name or title, work_dir)
+                    # A read must not fail because the state dir is read-only
+                    # or full: the list is the answer, the registry write is a
+                    # side effect.
+                    try:
+                        sessions_registry.add_if_absent(provider, sid, name or title, work_dir)
+                    except OSError:
+                        pass
     else:
         # Qoder / Kimi / registry providers: transcripts are in formats the
         # plugin cannot scan; the registry is the only source of "sessions
@@ -342,16 +351,26 @@ elif action == "delete":
     # outside, so it is checked rather than trusted.
     sid = argv[1] if len(argv) > 1 else ""
     ok = False
+    entry_removed = False
     if sid and "/" not in sid and ".." not in sid:
         if provider in TRANSCRIPT_PROVIDERS:
             path = base + sid + ".jsonl"
-            if os.path.isfile(path) and is_agent_session(path):
-                os.remove(path)
-                ok = True
-                forget_synced([sid])
+            try:
+                if os.path.isfile(path) and is_agent_session(path):
+                    os.remove(path)
+                    ok = True
+                    forget_synced([sid])
+            except OSError:
+                # Unreadable/undeletable transcript: report a failure below,
+                # never die with a traceback (the panel parses JSON only).
+                ok = False
         elif OPENAI_BACKED:
+            # The text transcript of a gateway session is this plugin's own
+            # store, not an external CLI's: it can go from any directory (the
+            # row shows its path for confirmation). Removing only the registry
+            # entry would not hide it — the gateway listing scans the files.
             path, data = openai_session(sid)
-            if data and data["workDir"] == os.getcwd():
+            if data:
                 try:
                     os.remove(path)
                     ok = True
@@ -363,19 +382,27 @@ elif action == "delete":
             e = registry_entry(provider, sid)
             if e:
                 ok = delete_via_cli(provider, sid, e["workDir"])
-        # The registry entry goes in every case: the panel must not offer a
-        # session that is gone. But a session that could not be removed is
-        # still a failed delete — "deleted: 0" says so.
-        if not OPENAI_BACKED or ok:
+        # Registry policy. A transcript provider's foreign session is removed
+        # from the list without touching its file (the plan's default for an
+        # external session); a registry-backed session that could not be
+        # deleted stays in the list, because the registry IS its only listing.
+        if provider in TRANSCRIPT_PROVIDERS:
+            e = registry_entry(provider, sid)
+            foreign = e is not None and e["workDir"] != os.getcwd()
+            stale = e is not None and not os.path.isfile(path)
+            if ok or foreign or stale:
+                sessions_registry.remove(provider, sid)
+                entry_removed = True
+                # Claude Code, CheapVibeCode and cc9 share one transcript
+                # store, so the session is gone for all of them.
+                for other in TRANSCRIPT_PROVIDERS:
+                    if other != provider:
+                        sessions_registry.remove(other, sid)
+        elif ok:
             sessions_registry.remove(provider, sid)
-        # Claude Code and CheapVibeCode are the same CLI on two gateways and
-        # share one transcript store. The session is therefore gone for both,
-        # and the other one's registry entry would keep a session that no
-        # longer exists in the panel.
-        for other in TRANSCRIPT_PROVIDERS:
-            if other != provider:
-                sessions_registry.remove(other, sid)
-    print(json.dumps({"deleted": 1 if ok else 0}))
+            entry_removed = True
+    print(json.dumps({"deleted": 1 if ok else 0,
+                      "removed": 1 if (ok or entry_removed) else 0}))
 
 elif action == "rename":
     # Same records /rename writes, so the new name also shows up in the CLI's
@@ -387,19 +414,24 @@ elif action == "rename":
     if sid and "/" not in sid and ".." not in sid:
         if provider in TRANSCRIPT_PROVIDERS:
             path = base + sid + ".jsonl"
-            if os.path.isfile(path) and is_agent_session(path):
-                with open(path, "rb+") as fh:
-                    fh.seek(0, os.SEEK_END)
-                    needs_newline = False
-                    if fh.tell() > 0:
-                        fh.seek(-1, os.SEEK_END)
-                        needs_newline = fh.read(1) != b"\n"
-                    records = [{"type": "custom-title", "customTitle": name, "sessionId": sid},
-                               {"type": "agent-name", "agentName": name, "sessionId": sid}]
-                    # Compact, like the CLI writes it: it reads the title with a regex.
-                    data = "".join(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n" for r in records)
-                    fh.write((b"\n" if needs_newline else b"") + data.encode("utf-8"))
-                ok = True
+            try:
+                if os.path.isfile(path) and is_agent_session(path):
+                    with open(path, "rb+") as fh:
+                        fh.seek(0, os.SEEK_END)
+                        needs_newline = False
+                        if fh.tell() > 0:
+                            fh.seek(-1, os.SEEK_END)
+                            needs_newline = fh.read(1) != b"\n"
+                        records = [{"type": "custom-title", "customTitle": name, "sessionId": sid},
+                                   {"type": "agent-name", "agentName": name, "sessionId": sid}]
+                        # Compact, like the CLI writes it: it reads the title with a regex.
+                        data = "".join(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n" for r in records)
+                        fh.write((b"\n" if needs_newline else b"") + data.encode("utf-8"))
+                    ok = True
+            except OSError:
+                # A read-only transcript must not abort the rename: the
+                # registry title still changes and the panel shows it.
+                ok = False
         existed = registry_entry(provider, sid) is not None
         sessions_registry.rename(provider, sid, name)
         ok = ok or existed
@@ -431,32 +463,39 @@ elif action == "delete-all":
         # Only this working directory, like the registry-backed providers: the
         # panel shows nothing else, and a registry entry dropped for another
         # directory would take its transcript out of that directory's history
-        # with it.
+        # with it. An entry whose file could not be removed stays in the list.
         here = os.getcwd()
         for e in sessions_registry.list(provider):
             if e["workDir"] != here:
                 continue
-            sessions_registry.remove(provider, e["id"])
-            if e["id"] not in removed:
-                removed.append(e["id"])
+            if e["id"] in removed or not os.path.isfile(base + e["id"] + ".jsonl"):
+                sessions_registry.remove(provider, e["id"])
         # The other gateway's CLI shares the transcripts, so its entries go too.
         for other in TRANSCRIPT_PROVIDERS:
             if other != provider:
                 for e in sessions_registry.list(other):
-                    if e["workDir"] == here:
+                    if e["workDir"] == here and (
+                            e["id"] in removed or not os.path.isfile(base + e["id"] + ".jsonl")):
                         sessions_registry.remove(other, e["id"])
     else:
         # Only this working directory: the panel shows nothing else, and a
         # registry entry dropped for another one would take its transcript out
-        # of that directory's history with it.
+        # of that directory's history with it. The registry is the only
+        # listing source for these providers, so a failed CLI delete must not
+        # remove the entry — the user would lose a live session from history.
         here = os.getcwd()
+        failed = 0
         for e in sessions_registry.list(provider):
             if e["workDir"] != here:
                 continue
             if delete_via_cli(provider, e["id"], e["workDir"]):
                 removed.append(e["id"])
-            sessions_registry.remove(provider, e["id"])
-    print(json.dumps({"deleted": len(removed)}))
+                sessions_registry.remove(provider, e["id"])
+            else:
+                failed += 1
+        print(json.dumps({"deleted": len(removed), "failed": failed}))
+        sys.exit(0)
+    print(json.dumps({"deleted": len(removed), "failed": 0}))
 
 elif action == "restore":
     sid = argv[1] if len(argv) > 1 else ""
@@ -520,13 +559,17 @@ elif action == "restore":
         e = registry_entry(provider, sid)
         if e:
             origin_dir = e["workDir"]
-        session_file = (transcript_base(provider, e["workDir"]) + sid + ".jsonl") if e else ""
+        # ACP/Codex keep no transcript this plugin can read (transcript_base
+        # is "" for them): an empty path, not "<sid>.jsonl" in the current
+        # directory — that used to pick up a stray file of the same name.
+        base_dir = transcript_base(provider, e["workDir"]) if e else ""
+        session_file = (base_dir + sid + ".jsonl") if base_dir else ""
     msgs = []
     # The CLI stamps every reply with the model and effort it ran with; the last
     # reply tells what the session was using when it was left.
     model = effort = ""
     if os.path.exists(session_file):
-        with open(session_file) as f:
+        with open(session_file, encoding="utf-8") as f:
             for line in f:
                 try:
                     d = json.loads(line)
@@ -565,10 +608,13 @@ elif action == "restore":
                                 if isinstance(c, dict) and c.get("type") == "text" and not c["text"].startswith("<"):
                                     msgs.append({"role": "user", "content": c["text"]})
                     elif d.get("type") == "assistant":
-                        # Subagent replies and synthetic or gateway records say nothing about
-                        # the chat's own model. Older CLIs have no requestedModel.
+                        # Subagent replies and synthetic records say nothing about
+                        # the chat's own model (the sidechain flag and a real id
+                        # decide). The old "claude-" prefix filter also hid every
+                        # gateway model: cc9 runs "cvc/…", "kimi/…", CVC runs
+                        # "gpt-…", so per-session restore never worked there.
                         used = d.get("requestedModel") or d.get("message", {}).get("model") or ""
-                        if not d.get("isSidechain") and used.startswith("claude-"):
+                        if not d.get("isSidechain") and used and not str(used).startswith("<"):
                             model = used
                             effort = d.get("effort") or effort
                         content = d.get("message", {}).get("content", [])

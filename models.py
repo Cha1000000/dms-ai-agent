@@ -176,15 +176,9 @@ def map_cvc_models(payload):
 
 
 def ask_cvc():
-    key = provider_secrets.get_api_key("cvc")
-    if not key:
-        raise RuntimeError("no api key")
-    req = urllib.request.Request(
-        provider_secrets.CVC_BASE_URL + "/v1/models",
-        headers={"Authorization": "Bearer " + key},
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.load(resp)
+    # provider_secrets owns the key and the no-redirect rule: the key must
+    # never follow a 30x to another origin.
+    return provider_secrets.cvc_models(timeout=30)
 
 
 def map_qoder_models(text):
@@ -333,7 +327,7 @@ def map_openai_models(payload, base_url):
             continue
         out.append({
             "id": mid,
-            "label": m.get("display_name") or m.get("owned_by") or mid,
+            "label": m.get("display_name") or mid,
             "resolved": mid,
             "desc": m.get("owned_by") or "",
             "efforts": [],
@@ -428,10 +422,24 @@ def map_acp_models(result):
 
     Two shapes exist: models.availableModels (gemini-cli 0.66) and the
     configOptions entries with category "model". Both are read; the agent
-    decides which it sends.
-    """
+    decides which it sends. Effort is a session-level config option
+    (category "effort" or "thought_level"), so the same levels are attached to
+    every model — the bridge applies them by their real option id."""
     out = []
     seen = set()
+    efforts = []
+    for opt in (result.get("configOptions") or []) if isinstance(result, dict) else []:
+        if not isinstance(opt, dict) or opt.get("category") not in ("effort", "thought_level"):
+            continue
+        if opt.get("type") != "select":
+            continue
+        for entry in opt.get("options") or []:
+            if not isinstance(entry, dict):
+                continue
+            values = [entry] + list(entry.get("options") or [])
+            for value in values:
+                if isinstance(value, dict) and value.get("value") and value["value"] not in efforts:
+                    efforts.append(value["value"])
     models = result.get("models") if isinstance(result, dict) else None
     if isinstance(models, dict):
         for row in models.get("availableModels") or []:
@@ -443,7 +451,7 @@ def map_acp_models(result):
             seen.add(mid)
             out.append({"id": mid, "label": row.get("name") or row.get("title") or mid,
                         "resolved": mid, "desc": row.get("description") or "",
-                        "efforts": []})
+                        "efforts": list(efforts)})
     for opt in (result.get("configOptions") or []) if isinstance(result, dict) else []:
         if not isinstance(opt, dict) or opt.get("category") != "model":
             continue
@@ -455,7 +463,7 @@ def map_acp_models(result):
                 continue
             seen.add(mid)
             out.append({"id": mid, "label": entry.get("name") or mid,
-                        "resolved": mid, "desc": "", "efforts": []})
+                        "resolved": mid, "desc": "", "efforts": list(efforts)})
     return out
 
 
@@ -482,6 +490,12 @@ def fetch_models_for(provider):
         if isinstance(command, str):
             command = command.split()
         return ask_acp_models(command)
+    if provider not in KNOWN_PROVIDERS:
+        # A registered provider whose adapter has no catalog source here (a
+        # file from a newer version, or a hand-edited entry). Answering with
+        # the Claude catalog would be a wrong answer with a confident face.
+        raise RuntimeError("provider %r: adapter %r has no model source"
+                           % (provider, adapter))
     if provider == "cc9":
         # The wrapper's catalog — the gateway's aggregate, not the native
         # Claude one. The bare aliases are not added: in that catalog they are
@@ -512,9 +526,24 @@ def main():
         models = fetch_models()
         if not models:
             raise RuntimeError("empty model list")
-        os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-        with open(CACHE, "w") as f:
-            json.dump(models, f)
+        # Atomic and owner-only: two bars (or the settings page) can read this
+        # cache while it is rewritten, and a truncated file would poison the
+        # fallback used when the provider is unreachable.
+        import tempfile
+        directory = os.path.dirname(CACHE)
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".models-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                os.chmod(tmp, 0o600)
+                json.dump(models, f)
+            os.replace(tmp, CACHE)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
     except Exception as e:
         print(f"models.py: {e}", file=sys.stderr)
         try:

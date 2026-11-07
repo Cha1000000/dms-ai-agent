@@ -270,3 +270,37 @@ def test_restore_keeps_all_messages_and_all_text_blocks(tmp_path):
     out = run_history(home, cwd, "--provider", "claude", "restore", "long-session")
     messages = json.loads(out.stdout)["messages"]
     assert [m["content"] for m in messages] == ["message %d" % i for i in range(25)] + ["first", "second"]
+
+
+def test_restore_a_gateway_model_id_not_only_a_claude_one(tmp_path):
+    """cc9 runs "cvc/…"/"kimi/…" ids, CheapVibeCode runs non-Claude names. The
+    old `claude-` prefix filter made per-session model restore silently dead
+    for both providers."""
+    home = tmp_path / "home"
+    cwd = tmp_path / "work"
+    cwd.mkdir()
+    write_session(home, cwd, "gw-session", [
+        '{"type":"user","message":{"content":"hi"}}',
+        '{"type":"assistant","requestedModel":"cvc/deepseek-v4.1-flash","effort":"high",'
+        '"message":{"content":[{"type":"text","text":"hello"}]}}',
+    ])
+    out = run_history(home, cwd, "--provider", "cc9", "restore", "gw-session")
+    data = json.loads(out.stdout)
+    assert data["model"] == "cvc/deepseek-v4.1-flash"
+    assert data["effort"] == "high"
+
+
+def test_restore_ignores_a_subagent_model(tmp_path):
+    home = tmp_path / "home"
+    cwd = tmp_path / "work"
+    cwd.mkdir()
+    write_session(home, cwd, "side-session", [
+        '{"type":"user","message":{"content":"hi"}}',
+        '{"type":"assistant","requestedModel":"claude-opus-5-5",'
+        '"message":{"content":[{"type":"text","text":"main"}]}}',
+        '{"type":"assistant","isSidechain":true,"requestedModel":"claude-haiku-5-5",'
+        '"message":{"content":[{"type":"text","text":"sub"}]}}',
+    ])
+    data = json.loads(run_history(home, cwd, "--provider", "claude",
+                                  "restore", "side-session").stdout)
+    assert data["model"] == "claude-opus-5-5"

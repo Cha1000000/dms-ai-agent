@@ -108,6 +108,9 @@ PROVIDERS.cvc = {
     parseLine: PROVIDERS.claude.parseLine,
     canUseTool: false,
     requiresKey: true,
+    // The key can be deleted in the settings mid-session; a cached "yes"
+    // would keep launching the stock CLI without its gateway env.
+    liveSignIn: true,
 };
 // 9Router (cc9) is the stock claude CLI run through the cc9 wrapper: the CLI
 // pointed at the local 9Router gateway, with its own config dir. It is a
@@ -138,6 +141,10 @@ PROVIDERS.cc9 = {
     // The gateway's own presets: the bare aliases resolve to the Combo, and
     // the Combo must not be in Jarvis.
     aliasModels: false,
+    // Readiness is a live service, not a login: the wrapper falls back to the
+    // Tokenator when the gateway is down, so the answer must not be cached for
+    // the rest of the shell's life (see provider_secrets.cc9_ready).
+    liveSignIn: true,
 };
 // Qoder is its own CLI (qodercli). The query is a positional argument (not
 // stdin), the stream is the claude stream-json shape nearly as-is, and
@@ -299,6 +306,31 @@ function byId(id) {
     return _registryDescriptors[id] || PROVIDERS[id] || undefined;
 }
 
+// The line that stops the running turn. The claude CLI (and its gateways)
+// stops on control_request/interrupt; a bridge provider speaks its own small
+// protocol and reads {"type":"cancel"} — sending it the claude request did
+// nothing, so Stop fell through to the SIGTERM fallback after three seconds
+// instead of cancelling inside the bridge (caught reviewing 2026-11-06).
+function cancelMessage(descriptor, requestId) {
+    if (descriptor && descriptor.adapter) return { type: "cancel" };
+    return {
+        type: "control_request",
+        request_id: "cancel_" + requestId,
+        request: { subtype: "interrupt", cancel_queued: true }
+    };
+}
+
+// i18n key of the "you are not signed in" hint: the built-in providers name
+// their own login command, a registry provider names its adapter, and anything
+// else gets the generic line (never a raw key on screen).
+function hintKey(descriptor) {
+    if (!descriptor) return "loginHint.generic";
+    if (PROVIDERS[descriptor.id] === descriptor) return "loginHint." + descriptor.id;
+    if (descriptor.adapter === "codex") return "loginHint.codex";
+    if (descriptor.adapter === "openai") return "loginHint.gateway";
+    return "loginHint.generic";
+}
+
 function all() {
     return Object.keys(PROVIDERS).map(function (k) { return PROVIDERS[k]; });
 }
@@ -317,6 +349,9 @@ function setRegistry(data) {
         var entry = providers[id];
         if (!entry || typeof entry !== "object" || !entry.adapter) continue;
         if (!/^[a-z0-9-]+$/.test(id)) continue; // same rule as registry.py
+        // A registry entry must never shadow a built-in provider: the id is
+        // what the chat, the model catalogs and the history are keyed on.
+        if (PROVIDERS[id]) continue;
         if (entry.adapter !== "acp" && entry.adapter !== "codex" && entry.adapter !== "openai") continue;
         _registryDescriptors[id] = {
             id: id,

@@ -6,6 +6,7 @@ import Quickshell.Io
 import qs.Common
 import qs.Widgets
 import qs.Modules.Plugins
+import "providers.js" as Providers
 
 PluginComponent {
     id: root
@@ -102,9 +103,11 @@ PluginComponent {
         // first: onClaudeModelChanged syncs the map and would rewrite it from
         // stale state otherwise.
         var savedModels = pluginData.providerModels || {};
+        var savedPerms = pluginData.permissionModes || {};
         var savedProvider = pluginData.provider || "claude";
         var sameProvider = AgentService.providerId === savedProvider;
         AgentService.providerModels = savedModels;
+        AgentService.permissionModes = savedPerms;
         AgentService.providerId = savedProvider;
         AgentService.claudeModel = (!sameProvider && savedModels[savedProvider] !== undefined)
                 ? savedModels[savedProvider]
@@ -132,7 +135,22 @@ PluginComponent {
         if (pluginData.workDir && recent.indexOf(pluginData.workDir) < 0) recent = [pluginData.workDir].concat(recent);
         AgentService.recentWorkDirs = recent;
         AgentService.setWorkDir(pluginData.workDir || "");
-        AgentService.permissionMode = pluginData.permissionMode === "auto" ? "auto" : "confirm";
+        // The map wins over the single key: the key may still hold the mode of
+        // another provider (it is rewritten on every switch, but this snapshot
+        // is older than that write). A provider without the permission
+        // handshake always runs unattended.
+        var savedDesc = Providers.byId(savedProvider);
+        var savedCanAsk = !!(savedDesc && savedDesc.caps && savedDesc.caps.askFirst);
+        var effectiveMode = !savedCanAsk ? "auto"
+                : (savedPerms[savedProvider] !== undefined
+                   ? savedPerms[savedProvider]
+                   : (pluginData.permissionMode === "auto" ? "auto" : "confirm"));
+        AgentService.permissionMode = effectiveMode;
+        // The map is authoritative, so the single key must follow it even when
+        // the property value itself did not change (no onPermissionModeChanged
+        // would fire): the settings page and older configs read that key.
+        if (pluginData.permissionMode !== effectiveMode)
+            AgentService.settingChosen("permissionMode", effectiveMode);
         AgentService.restoreSessionModel = pluginData.restoreSessionModel !== false;
         AgentTheme.apply(pluginData);
         AgentService.updateNotify = pluginData.updateNotify === true;

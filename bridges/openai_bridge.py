@@ -19,6 +19,7 @@ stdout: canonical assistant/result events. Exactly one result per turn.
 """
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -195,6 +196,10 @@ def run_turn(msg, base_url, key):
         elif e.code == 401:
             emit_result("", True, "", ["gateway rejected the API key (401)"])
         else:
+            # A gateway that echoes the Authorization header in its error must
+            # not paint the key into the chat (and its history).
+            if key:
+                body = body.replace(key, "***")
             emit_result("", True, "", ["gateway error %s: %s" % (e.code, body[:300])])
         return
     except Exception as e:
@@ -207,6 +212,7 @@ def run_turn(msg, base_url, key):
     usage = None
     errors = []
     saw_done = False
+    stream_error = ""
     try:
         for raw in resp:
             with _state_lock:
@@ -234,6 +240,10 @@ def run_turn(msg, base_url, key):
                                                           "content": [{"type": "text", "text": piece}]}})
             if chunk.get("usage"):
                 usage = chunk["usage"]
+    except Exception as e:
+        # A reset mid-stream used to kill the bridge with no result at all:
+        # the chat then showed "exited without a response". Report the turn.
+        stream_error = "connection lost: %s" % e
     finally:
         try:
             resp.close()
@@ -243,12 +253,13 @@ def run_turn(msg, base_url, key):
     with _state_lock:
         cancelled = _state["cancel"]
     if cancelled:
-        if text:
-            out({"type": "assistant", "message": {"role": "assistant",
-                                                  "content": [{"type": "text", "text": text}]}})
+        # The partial text was already streamed chunk by chunk; repeating it
+        # as one assistant event showed the answer twice.
         emit_result("", True, "", ["cancelled"])
         return
-    if not saw_done:
+    if stream_error:
+        errors.append(stream_error)
+    elif not saw_done:
         # The stream ended (EOF or connection drop) without [DONE]: an
         # incomplete answer is an error even if some text arrived — a "good"
         # empty result would hide the breakage.
@@ -323,6 +334,14 @@ def service_loop(base_url, key):
         run_turn(msg, base_url, key)
 
 
+def _on_term(signum, frame):
+    # The chat's Stop reaches this process as SIGTERM when the bridge is not
+    # answering: close the HTTP response and leave; do_cancel's graceful path
+    # is the {"type":"cancel"} line.
+    do_cancel()
+    sys.exit(0)
+
+
 def main():
     if len(sys.argv) < 2 or not sys.argv[1].strip():
         sys.stderr.write("usage: openai_bridge.py <base-url>\n")
@@ -333,6 +352,8 @@ def main():
                                            or host.startswith("[::1]") or host.startswith("[::]")):
         sys.stderr.write("openai_bridge: plain HTTP is only allowed for loopback\n")
         sys.exit(2)
+    signal.signal(signal.SIGTERM, _on_term)
+    signal.signal(signal.SIGINT, _on_term)
     t = threading.Thread(target=stdin_loop, daemon=True)
     t.start()
     service_loop(base, api_key(provider_id_from_env()))

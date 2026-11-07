@@ -196,8 +196,9 @@ assert.equal(_pendingContextFile, props.path); assert.deepStrictEqual(launched, 
 removeContextFile(); assert.equal(_pendingContextFile, '');
 assert(removed.some(x => x.includes(props.path)));
 providerOrClaude = {stdinUserFormat:null}; _launchClaude('hello');
-assert.equal(finished, 'error.contextUnsupported'); assert.equal(launched.length, 1);
-assert(_carriedContext.some(x => x.content === 'old'));
+assert.equal(finished, ''); assert.equal(launched.length, 2);
+assert(launched[1].includes('old') && launched[1].includes('hello'));
+assert.deepStrictEqual(_carriedContext.map(x => x.content), ['old','reply','new']);
 '''
     run = subprocess.run(["node", "-e", script, os.path.join(PLUGIN, "AgentService.qml")],
                          capture_output=True, text=True)

@@ -68,18 +68,25 @@ PluginSettings {
     readonly property string permissionModeDesc: {
         if (providerCanAskFirst)
             return "Ask first: the chat shows an Allow / Deny dialog before the agent runs a command or changes a file. No confirmation: the agent acts immediately (Claude Code runs with --dangerously-skip-permissions, unrestricted shell access as you).";
-        return "This provider cannot pause for permission prompts, so the chat always runs unattended (equivalent to --dangerously-skip-permissions).";
+        return "This provider has no Ask first launch mode, so the chat runs it unattended (equivalent to --dangerously-skip-permissions). An ACP agent that requests permission itself still shows the Allow / Deny dialog.";
     }
 
-    // A provider without the permission handshake cannot honour "confirm"; the
-    // stored value follows the provider so the picker never claims a dialog that
-    // will not appear. Checked on open too — the handler alone only sees a change.
-    function syncPermissionMode() {
-        if (!providerCanAskFirst)
-            saveValue("permissionMode", "auto");
+    // The mode is kept per provider. Forcing "auto" into the single stored key
+    // whenever a provider without the handshake was selected silently
+    // downgraded the user's Ask-first preference for Claude Code after a visit
+    // to Qoder, and nothing ever restored it.
+    Connections {
+        target: providerSelect
+        function onValueChanged() {
+            const map = root.loadValue("permissionModes", {}) || {};
+            const canAsk = providerCanAskFirst;
+            const want = map[providerSelect.value] !== undefined
+                    ? map[providerSelect.value]
+                    : (canAsk ? "confirm" : "auto");
+            if (permissionSelect.value !== want)
+                permissionSelect.value = want;
+        }
     }
-    onProviderCanAskFirstChanged: syncPermissionMode()
-    Component.onCompleted: Qt.callLater(syncPermissionMode)
 
     function micLabel(node) {
         const props = node.properties || {};
@@ -230,6 +237,7 @@ PluginSettings {
         property string editorId: ""
         property bool jsonMode: false
         property string formError: ""
+        property string listError: ""
         property var pendingEntry: null
         property string pendingId: ""
         property string pendingKey: ""
@@ -247,8 +255,15 @@ PluginSettings {
 
         Process {
             id: listProc
+            // The python reason (corrupt file, unsupported version) is on
+            // stderr; without this the UI showed a bare JSON parse error.
+            stderr: StdioCollector {
+                onStreamFinished: regProviders.listError = String(text).trim()
+            }
             stdout: StdioCollector {
                 onStreamFinished: {
+                    const reason = regProviders.listError;
+                    regProviders.listError = "";
                     try {
                         const data = JSON.parse(String(text).trim());
                         if (!data || !data.providers || typeof data.providers !== "object" || Array.isArray(data.providers))
@@ -260,7 +275,7 @@ PluginSettings {
                         regProviders.loadError = "";
                     } catch (e) {
                         regProviders.loadFailed = true;
-                        regProviders.loadError = String(text).trim() || String(e);
+                        regProviders.loadError = reason || String(text).trim() || String(e);
                     }
                 }
             }
@@ -359,6 +374,8 @@ PluginSettings {
             jsonMode = false;
             const e = providers[pid] || {};
             formId = pid;
+            // A key typed for another provider must never be saved to this one.
+            formKeyField.text = "";
             pendingEditId = pid;
             formAdapter = e.adapter || "acp";
             formTitle = e.title || "";
@@ -379,6 +396,9 @@ PluginSettings {
         }
         function validateEntry(pid, entry) {
             if (!/^[a-z0-9-]+$/.test(pid)) return "settings.reg.badId";
+            // A registry id must not shadow a built-in provider: registry.py
+            // refuses it too, but the form should say so before a round trip.
+            if (Providers.all().some(p => p.id === pid)) return "settings.reg.reservedId";
             if (!entry || typeof entry !== "object" || Array.isArray(entry)) return "settings.reg.badEntry";
             if (Object.keys(entry).some(k => ["adapter", "title", "command", "baseUrl"].indexOf(k) < 0))
                 return "settings.reg.badFields";
@@ -858,6 +878,9 @@ PluginSettings {
             DankTextField {
                 id: formKeyField
                 width: parent.width
+                // Only the OpenAI gateway bridge reads a key; an ACP/Codex
+                // entry would store a secret nothing uses.
+                visible: regProviders.formAdapter === "openai"
                 placeholderText: I18n.t(root.uiLanguage, "settings.reg.keyPlaceholder")
                 showPasswordToggle: true
                 echoMode: TextInput.Password
@@ -912,23 +935,37 @@ PluginSettings {
         // The hint comes from the same table the chat uses, so the two cannot
         // drift apart.
         function hint(provider) {
-            return I18n.t(root.uiLanguage, "loginHint." + provider);
+            const key = Providers.hintKey(Providers.byId(provider));
+            return I18n.t(root.uiLanguage, I18n.has(root.uiLanguage, key) ? key : "loginHint.generic");
         }
         property string state: ""      // "set" | "missing" | ""
+        property bool refreshQueued: false
 
         onProviderIdChanged: refresh()
         Component.onCompleted: Qt.callLater(refresh)
 
         // The command is built here, not bound: a binding on `providerId` is
         // re-evaluated after this change handler, so the first check after a
-        // provider switch would still run against the previous provider.
+        // provider switch would still run against the previous provider. A
+        // check already in flight is not restarted; the latest provider is
+        // checked right after it exits.
         function refresh() {
+            if (check.running) {
+                refreshQueued = true;
+                return;
+            }
             check.command = ["python3", secretsScript, "check", providerId];
             check.running = true;
         }
 
         Process {
             id: check
+            onExited: {
+                if (signIn.refreshQueued) {
+                    signIn.refreshQueued = false;
+                    signIn.refresh();
+                }
+            }
             stdout: StdioCollector {
                 onStreamFinished: signIn.state = String(text).trim()
             }
@@ -940,7 +977,7 @@ PluginSettings {
             wrapMode: Text.WordWrap
             font.pixelSize: Theme.fontSizeSmall
             color: Theme.withAlpha(Theme.error, 0.9)
-            text: "Not signed in. " + signIn.hint(signIn.providerId)
+            text: I18n.t(root.uiLanguage, "error.notLoggedIn") + ". " + signIn.hint(signIn.providerId)
         }
     }
 

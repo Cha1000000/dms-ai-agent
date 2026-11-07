@@ -11,6 +11,7 @@ import pytest
 PLUGIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PLUGIN)
 import models  # noqa: E402
+import provider_secrets  # noqa: E402
 
 
 @pytest.mark.parametrize("override", [False, True])
@@ -29,7 +30,8 @@ def test_shared_registry_path_and_legacy_migration(tmp_path, override):
                               input=stdin, text=True, capture_output=True, env=env, check=True)
 
     assert run("provider_secrets.py", ["get", "cvc"]).stdout == "fake-legacy-key"
-    run("registry.py", ["set-provider", "example"], '{"adapter":"openai"}')
+    run("registry.py", ["set-provider", "example"],
+        '{"adapter":"openai","baseUrl":"https://example.test/v1"}')
     run("provider_secrets.py", ["set", "other"], "fake-new-key\n")
     data = json.loads(target.read_text())
     assert data["keys"]["cvc"]["apiKey"] == "fake-legacy-key"
@@ -96,6 +98,24 @@ def test_models_never_forward_authorization_on_redirect(servers, monkeypatch, co
     assert received["gateway"] == ["Bearer fake-model-key"]
     assert received["destination"] == []
     assert error is not None and error.code == code
+
+
+@pytest.mark.parametrize("code", [301, 302, 303, 307, 308])
+def test_cvc_catalog_never_forwards_authorization_on_redirect(servers, monkeypatch, code):
+    gateway, received = servers
+    gateway.redirect_code = code
+    monkeypatch.setattr(provider_secrets, "CVC_BASE_URL", "http://127.0.0.1:%d" % gateway.server_port)
+    monkeypatch.setattr(provider_secrets, "get_api_key", lambda _: "fake-cvc-key")
+    error = None
+    try:
+        provider_secrets.cvc_models()
+    except urllib.error.HTTPError as exc:
+        error = exc
+    assert received["gateway"] == ["Bearer fake-cvc-key"]
+    assert received["destination"] == []
+    assert error is not None and error.code == code
+    # The "Test key" button says the check failed instead of claiming a catalog.
+    assert provider_secrets.test_cvc_key().startswith("fail:")
 
 
 @pytest.mark.parametrize("code", [301, 302, 303, 307, 308])

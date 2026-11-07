@@ -35,6 +35,8 @@ Exactly one result per turn. EOF before turn completion -> result is_error.
 """
 import json
 import os
+import re
+import signal
 import subprocess
 import sys
 import threading
@@ -58,15 +60,18 @@ def out(obj):
     sys.stdout.flush()
 
 
-def emit_result(session_id, is_error, text, errors=None, usage=None):
-    with _state_lock:
-        if not _state["turn_done"]:
-            _state["turn_done"] = True
-        else:
-            return
+def send_result(session_id, is_error, text, errors=None, usage=None):
     out({"type": "result", "session_id": session_id or "", "is_error": is_error,
          "result": text, "errors": errors or [], "total_cost_usd": None,
          "usage": usage})
+
+
+def emit_result(session_id, is_error, text, errors=None, usage=None):
+    with _state_lock:
+        if _state["turn_done"]:
+            return
+        _state["turn_done"] = True
+    send_result(session_id, is_error, text, errors, usage)
 
 
 def load_context_text():
@@ -129,18 +134,26 @@ def build_argv(cmd, resume_id):
         cfg = dict(_state["config"])
     base = list(cmd) + ["exec"]
     if resume_id:
-        base += ["resume", resume_id]
-    base += ["--json", "--skip-git-repo-check", "--color", "never", "-"]
+        # `codex exec resume` accepts --json/-c/--skip-git-repo-check but NOT
+        # --color (codex-cli 0.167: "unexpected argument '--color' found"), so
+        # the flag belongs to the first turn only.
+        base += ["resume", resume_id, "--json", "--skip-git-repo-check", "-"]
+    else:
+        base += ["--json", "--skip-git-repo-check", "--color", "never", "-"]
     if cfg.get("model"):
         base += ["-m", cfg["model"]]
-    if cfg.get("effort"):
-        base += ["-c", 'model_reasoning_effort="%s"' % cfg["effort"]]
+    effort = cfg.get("effort")
+    # The value becomes a TOML fragment in -c: anything with a quote or a
+    # newline would inject more config. Levels are plain words.
+    if effort and re.fullmatch(r"[A-Za-z0-9_-]+", str(effort)):
+        base += ["-c", 'model_reasoning_effort="%s"' % effort]
     return base
 
 
 def reader(proc):
     """Read codex stdout; map events to canonical ones; emit one result."""
     errors = []
+    warnings = []
     thread_id = ""
     usage = None
     turn_done = False
@@ -168,7 +181,10 @@ def reader(proc):
                         out({"type": "assistant", "message": {"role": "assistant",
                                                               "content": [{"type": "text", "text": text}]}})
                 elif itype == "error":
-                    errors.append(item.get("message", "codex error item"))
+                    # codex-cli 0.167 emits non-fatal items on every run
+                    # (plugin-hook config, hook timeout). They are warnings:
+                    # turn.failed is what ends a turn as failed.
+                    warnings.append(item.get("message", "codex error item"))
                 elif itype == "reasoning":
                     pass  # hidden from the chat
                 # command_execution / file_change / mcp_tool_call are tool
@@ -184,17 +200,21 @@ def reader(proc):
                 break
             elif etype == "error":
                 # Transport-level retry/noise; never ends a turn.
-                errors.append(ev.get("message", "codex error"))
+                warnings.append(ev.get("message", "codex error"))
     finally:
-        # EOF: the process ended before a terminal event.
-        if not turn_done:
-            errors.append("codex exited before completing the turn")
-        err = bool(errors)
         with _state_lock:
-            _state["turn_done"] = True
-        out({"type": "result", "session_id": thread_id, "is_error": err,
-             "result": "", "errors": errors, "total_cost_usd": None,
-             "usage": usage})
+            # A superseded reader (its process replaced by the next turn after
+            # a timeout) must not report into the new turn.
+            stale = _state["proc"] is not proc
+            cancelled = _state["cancelled"]
+        # EOF: the process ended before a terminal event.
+        if not stale:
+            if not turn_done:
+                errors.append("cancelled by user" if cancelled
+                              else "codex exited before completing the turn")
+            # emit_result also owns the one-result-per-turn guard: a turn already
+            # ended by the timeout path must not get a second result.
+            emit_result(thread_id, bool(errors), "", errors + warnings, usage)
 
 
 _turn_queue = queue.Queue()  # user messages; cancel/config handled inline
@@ -223,6 +243,19 @@ def stdin_loop():
     _turn_queue.put(None)  # EOF
 
 
+def stop_proc(proc, force=False):
+    """Stop codex and everything it spawned (its own process group)."""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL if force else signal.SIGTERM)
+    except OSError:
+        try:
+            proc.kill() if force else proc.terminate()
+        except OSError:
+            pass
+
+
 def do_cancel():
     with _state_lock:
         proc = _state["proc"]
@@ -230,15 +263,12 @@ def do_cancel():
         _state["cancelled"] = True
     if done:
         return
-    if proc is not None and proc.poll() is None:
-        try:
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-        except OSError:
-            pass
+    stop_proc(proc)
+    try:
+        if proc is not None:
+            proc.wait(timeout=3)
+    except (subprocess.TimeoutExpired, OSError):
+        stop_proc(proc, force=True)
     # The reader will see EOF and emit the error result.
 
 
@@ -258,18 +288,22 @@ def run_turn(msg):
             return
         if ctx:
             text = ctx + text
-        if proc is None or proc.poll() is not None:
-            proc = subprocess.Popen(argv, stdin=subprocess.PIPE,
-                                    stdout=subprocess.PIPE, stderr=None,
-                                    text=True, bufsize=1)
-            with _state_lock:
-                _state["proc"] = proc
-            t = threading.Thread(target=reader, args=(proc,), daemon=True)
-            t.start()
-        else:
-            # A long-lived process is not part of the codex exec model: every
-            # turn is a fresh exec. The previous one must be finished.
-            pass
+        # Every turn is a fresh `codex exec`. A previous process that outlived
+        # its turn (timeout) must be gone first: writing to its closed stdin
+        # would fail the new turn and leave the old process running.
+        if proc is not None and proc.poll() is None:
+            stop_proc(proc, force=True)
+            try:
+                proc.wait(timeout=3)
+            except (subprocess.TimeoutExpired, OSError):
+                pass
+        proc = subprocess.Popen(argv, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=None,
+                                text=True, bufsize=1, start_new_session=True)
+        with _state_lock:
+            _state["proc"] = proc
+        t = threading.Thread(target=reader, args=(proc,), daemon=True)
+        t.start()
         try:
             proc.stdin.write(text + "\n")
             proc.stdin.flush()
@@ -285,7 +319,20 @@ def run_turn(msg):
                 if _state["turn_done"]:
                     return
             time.sleep(0.1)
-        emit_result("", True, "", ["turn timed out"])
+        # Claim the turn BEFORE the kill: the reader would otherwise see the
+        # EOF first and report "exited before completing" instead of the real
+        # cause. Then stop the child: a timed-out codex would otherwise keep
+        # running with nobody reading it and poison the next turn.
+        with _state_lock:
+            if _state["turn_done"]:
+                return
+            _state["turn_done"] = True
+        stop_proc(proc)
+        try:
+            proc.wait(timeout=3)
+        except (subprocess.TimeoutExpired, OSError):
+            stop_proc(proc, force=True)
+        send_result("", True, "", ["turn timed out"])
     except Exception as e:  # never leave the turn hanging
         emit_result("", True, "", ["bridge error: %s" % e])
 
@@ -301,12 +348,28 @@ def service_loop():
         run_turn(msg)
 
 
+def _on_term(signum, frame):
+    with _state_lock:
+        proc = _state["proc"]
+    stop_proc(proc)
+    try:
+        if proc is not None:
+            proc.wait(timeout=3)
+    except (subprocess.TimeoutExpired, OSError):
+        stop_proc(proc, force=True)
+    sys.exit(0)
+
+
 def main():
     global CMD
     if len(sys.argv) < 2:
         sys.stderr.write("usage: codex_bridge.py <codex-command...>\n")
         sys.exit(2)
     CMD = sys.argv[1:]
+    # Stop in the chat SIGTERMs the bridge; the running codex (and its tools)
+    # must go with it.
+    signal.signal(signal.SIGTERM, _on_term)
+    signal.signal(signal.SIGINT, _on_term)
     t = threading.Thread(target=stdin_loop, daemon=True)
     t.start()
     service_loop()

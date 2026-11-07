@@ -56,6 +56,10 @@ Singleton {
     readonly property string modelsScript: decodeURIComponent(String(Qt.resolvedUrl("models.py")).replace(/^file:\/\//, ""))
     readonly property string secretsScript: decodeURIComponent(String(Qt.resolvedUrl("provider_secrets.py")).replace(/^file:\/\//, ""))
     property double _modelsFetchedAt: 0
+    // Which provider the `models` list belongs to. A switch swaps catalogs, and
+    // until the new one arrives `cliModel` still resolves through the old list:
+    // sending then would pass a foreign model id to the new CLI.
+    property string _modelsProvider: ""
     // Set when the provider's model catalog could not be read: the picker
     // shows the reason instead of another provider's models.
     property string modelsError: ""
@@ -108,6 +112,7 @@ Singleton {
                 if (Array.isArray(list) && list.length > 0) {
                     models = list;
                     modelsError = "";
+                    _modelsProvider = wanted;
                     // A saved id left from another provider ("opus",
                     // "Qwen3.8-Flash") would be rejected by --model. It survives
                     // only when the new catalog still lists it (or the aliases
@@ -124,11 +129,13 @@ Singleton {
                     // they were this one's.
                     models = [];
                     modelsError = tr("models.unavailable");
+                    _modelsProvider = wanted;
                     _modelsFetchedAt = 0;
                 }
             } catch (e) {
                 models = [];
                 modelsError = tr("models.unavailable");
+                _modelsProvider = wanted;
                 _modelsFetchedAt = 0;
             }
         });
@@ -151,6 +158,22 @@ Singleton {
     // "confirm": the agent asks before every action that needs a permission, and the chat
     // shows an Allow / Deny dialog. "auto": no questions asked (--dangerously-skip-permissions).
     property string permissionMode: "confirm"
+    // The mode chosen per provider, keyed by provider id: a provider without
+    // the permission handshake runs unattended, but that visit must not
+    // downgrade the Ask-first choice for the next one.
+    property var permissionModes: ({})
+    onPermissionModeChanged: syncPermissionModeMap()
+    function syncPermissionModeMap() {
+        if (permissionModes[providerId] === permissionMode) return;
+        var map = {};
+        for (var k in permissionModes) map[k] = permissionModes[k];
+        map[providerId] = permissionMode;
+        permissionModes = map;
+        settingChosen("permissionModes", map);
+        // The single key stays the current provider's mode: the settings page
+        // and older configs read it.
+        settingChosen("permissionMode", permissionMode);
+    }
     // Which agent CLI runs the chat. "claude" is the default and keeps every setting
     // that predates the provider registry.
     property string providerId: "claude"
@@ -165,8 +188,11 @@ Singleton {
 
     // --- External provider registry (providers.json) ---
     readonly property string registryScript: decodeURIComponent(String(Qt.resolvedUrl("registry.py")).replace(/^file:\/\//, ""))
+    // The plugin's private state dir. Honours XDG_STATE_HOME so the test stand
+    // (jarvis-stand runs with its own state home) never touches the real one.
+    readonly property string agentStateDir: (Quickshell.env("XDG_STATE_HOME") || (homeDir + "/.local/state")) + "/dms-agent"
     readonly property string providerRegistryPath: Quickshell.env("PROVIDER_REGISTRY")
-        || ((Quickshell.env("XDG_STATE_HOME") || (homeDir + "/.local/state")) + "/dms-agent/providers.json")
+        || (agentStateDir + "/providers.json")
     property string _registryStamp: ""
     Timer {
         interval: 2000
@@ -174,7 +200,9 @@ Singleton {
         repeat: true
         onTriggered: root.runQuietExit("stat -Lc '%d:%i:%s:%Y:%y:%z' -- " + root.shellQuote(root.providerRegistryPath) + " 2>/dev/null || printf missing", function(output) {
             var stamp = String(output).trim();
-            if (root._registryStamp !== "" && stamp !== root._registryStamp) root.loadProviderRegistry();
+            // The first tick also loads: a change landing between the startup
+            // load and this tick would otherwise wait for the NEXT change.
+            if (root._registryStamp === "" || stamp !== root._registryStamp) root.loadProviderRegistry();
             root._registryStamp = stamp;
         })
     }
@@ -303,6 +331,13 @@ Singleton {
         if (hadChat) addMessage("tool_status", tr("notice.contextTransfered"));
         sessionId = "";
         lastCost = "";
+        // Restore this provider's own permission mode. A provider without the
+        // handshake always runs unattended (even an old map entry saying
+        // otherwise); that visit must not change the Ask-first choice stored
+        // for the others.
+        var savedMode = permissionModes[providerId];
+        permissionMode = !providerCanAskFirst ? "auto"
+                        : (savedMode !== undefined ? savedMode : "confirm");
         // Restore this provider's own last model; a foreign id would be
         // rejected by --model. A first visit keeps the current one — the
         // refreshModels() fallback then picks from the new catalog. Saved here
@@ -316,9 +351,9 @@ Singleton {
         refreshModels();
         loadHistory();
     }
-    // Providers that cannot ask before acting (Qoder, Kimi) always run unattended;
-    // the Permissions picker shows this as a fixed state instead of a choice.
-    readonly property bool providerCanAskFirst: providerOrClaude.caps && providerOrClaude.caps.askFirst
+    // Providers that cannot ask before acting (Qoder, Kimi, the bridges) always
+    // run unattended; an unknown id borrows nothing from Claude Code either.
+    readonly property bool providerCanAskFirst: providerKnown && providerOrClaude.caps && providerOrClaude.caps.askFirst
     // Switching to a session from the history also switches to its model and effort.
     property bool restoreSessionModel: true
     // The line under the toolbar (status, cost, session name) folded down to its toggle.
@@ -488,7 +523,11 @@ Singleton {
     }
 
     function startVoice(source) {
-        if (busy || voiceState !== "idle") return;
+        // During a run only a provider that reads stdin could take the text
+        // while it works; the rest wait for the next message (the mic button is
+        // hidden for them). The recognition itself lands in the input field,
+        // and Send is Stop until the run ends.
+        if ((busy && !(providerOrClaude.caps && providerOrClaude.caps.stdinEnabled)) || voiceState !== "idle") return;
         voiceSource = source === "output" ? "output" : "mic";
         voiceError = "";
         voiceSeconds = 0;
@@ -989,10 +1028,18 @@ Singleton {
     // Deleting a session removes its transcript from disk — there is no other
     // copy. Confirmation happens in the UI before either of these is called.
     function deleteSession(historySessionId) {
-        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " delete " + shellQuote(historySessionId), function() {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " delete " + shellQuote(historySessionId), function(output) {
+            var removed = false;
+            try { removed = JSON.parse(String(output).trim()).removed === 1; } catch(e) {}
+            if (!removed) {
+                // "deleted: 0" alone was invisible: the row stayed and nothing
+                // said why. The reason is the panel not offering it again.
+                statusText = tr("error.deleteFailed");
+                notifyIfHidden(statusText);
+            }
             // Wiping the session being displayed leaves the chat pointing at a
             // transcript that no longer exists, so it is reset to a fresh one.
-            if (sessionId === historySessionId) clearMessages();
+            if (sessionId === historySessionId && removed) clearMessages();
             loadHistory();
         });
     }
@@ -1004,7 +1051,13 @@ Singleton {
     }
 
     function deleteAllSessions() {
-        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " delete-all", function() {
+        runQuietExit(cdWorkDir + "python3 " + shellQuote(historyScript) + " --provider " + shellQuote(providerId) + " delete-all", function(output) {
+            var failed = 0;
+            try { failed = JSON.parse(String(output).trim()).failed || 0; } catch(e) {}
+            if (failed > 0) {
+                statusText = tr("error.deleteFailed");
+                notifyIfHidden(statusText);
+            }
             clearMessages();
             loadHistory();
         });
@@ -1028,7 +1081,7 @@ Singleton {
     property bool loadingSession: false
 
     function resumeSession(historySessionId, historyWorkDir) {
-        if (busy) return;
+        if (busy) return false;
         clearChatContext();
         var request = ++_requestId;
         var restoreDir = workDir;
@@ -1069,6 +1122,12 @@ Singleton {
                 messageAdded(loaded[i]);
             }
             if (loaded.length === 0) {
+                // The transcript is gone or unreadable. For a provider whose
+                // history is its own transcripts, resuming this id would fail
+                // on every later message; start a fresh session instead. A
+                // registry-backed provider keeps the id: its native resume may
+                // still work without a readable transcript.
+                if (!(providerOrClaude.caps && providerOrClaude.caps.registryHistory)) sessionId = "";
                 addMessage("assistant", "Session resumed.");
             } else if (foreignDir) {
                 addMessage("tool_status", tr("notice.foreignDirResumed"));
@@ -1080,6 +1139,7 @@ Singleton {
             busy = false;
             statusText = tr("status.ready");
         });
+        return true;
     }
 
     // --- Intent detection ---
@@ -1180,10 +1240,16 @@ Singleton {
 
     // What the dialog shows: everything that will run, not the one-line summary of the chat.
     function permissionText(name, input) {
-        var inp = input || {};
+        var inp = (input && typeof input === "object") ? input : {};
         var body = inp.command || inp.content || inp.new_string || "";
-        var head = name + (inp.file_path ? ": " + inp.file_path : "");
-        var text = body ? head + "\n" + body : (inp.file_path ? head : name + "\n" + JSON.stringify(inp, null, 1));
+        var label = name || "tool";
+        var head = label + (inp.file_path ? ": " + inp.file_path : "");
+        var hasArgs = Object.keys(inp).length > 0;
+        // An ACP permission request carries a tool title and often no
+        // arguments: "undefined\n{}" is not a question anyone can answer.
+        var text = body ? head + "\n" + body
+                        : (inp.file_path ? head
+                                         : (hasArgs ? label + "\n" + JSON.stringify(inp, null, 1) : label));
         if (homeDir) text = text.split(homeDir).join("~");
         return text.length > 4000 ? text.substring(0, 4000) + "\n…" : text;
     }
@@ -1219,6 +1285,7 @@ Singleton {
         onTriggered: {
             if (root._claudeProcess && !root._gotResult) {
                 root._claudeProcess = null;
+                root._runningProvider = null;
                 root.permissionQueue = [];
                 root.removeContextFile();
                 if (root._carriedContext.length > 0) root.rearmCarriedContext();
@@ -1242,6 +1309,12 @@ Singleton {
     // Set when the user pressed Stop: the run that ends after that is a
     // cancellation, not a failure, and its error text is not shown.
     property bool _cancelled: false
+    // The provider descriptor of the RUNNING process. A switch changes
+    // providerId first, so the descriptor looked up by id at that moment is the
+    // new one: Cancel would speak the wrong protocol to the old CLI and the
+    // cancellation marker would name the new provider, letting "Cancelled"
+    // appear in the chat that was just cleared.
+    property var _runningProvider: null
     // The provider the cancelled run belonged to. A provider switch cancels
     // the old run too, but its answer belongs to the chat that was just
     // cleared — it must not appear in the new provider's chat.
@@ -1257,31 +1330,35 @@ Singleton {
         removeContextFile();
         if (_carriedContext.length > 0) rearmCarriedContext();
         _cancelled = true;
-        _cancelProvider = providerId;
+        // The descriptor (and the protocol) of the run that is actually
+        // running, not of whatever provider the settings now point at.
+        var running = _runningProvider || providerOrClaude;
+        _cancelProvider = _runningProvider ? _runningProvider.id : providerId;
         if (_claudeProcess) {
             var proc = _claudeProcess;
-            // The CLI stops the current turn on a control_request/interrupt
+            // The claude CLI stops the current turn on a control_request/interrupt
             // and answers with a result event; SIGTERM does not — the run
             // would end with no result at all, and the chat would show
             // "agent exited without a response" instead of "Cancelled".
             // The signal stays as a fallback for a CLI that ignores the
-            // interrupt, sent only after the CLI had time to answer.
-            if (providerOrClaude.caps && providerOrClaude.caps.cancelViaStdin) {
+            // interrupt, sent only after the CLI had time to answer. A bridge
+            // provider reads its own {"type":"cancel"} line instead.
+            if (running.caps && running.caps.cancelViaStdin) {
                 try {
-                    proc.write(JSON.stringify({
-                        type: "control_request",
-                        request_id: "cancel_" + _requestId,
-                        request: { subtype: "interrupt", cancel_queued: true }
-                    }) + "\n");
+                    proc.write(JSON.stringify(Providers.cancelMessage(running, _requestId)) + "\n");
                     cancelCloseStdin.restart();
                     cancelFallback.restart();
                 } catch (e) {
+                    // Could not write (the pipe is already gone): stop it the
+                    // hard way and let exitGrace report the cancellation.
                     proc.signal(15);
-                    _claudeProcess = null;
                 }
             } else {
+                // No stdin protocol to interrupt: the signal is the only stop.
+                // _claudeProcess stays set so its exit reaches exitGrace and the
+                // chat gets the same "Cancelled" answer as the stdin providers;
+                // late stdout lines are dropped by the !_cancelled guard.
                 proc.signal(15);
-                _claudeProcess = null;
             }
         }
         if (busy) {
@@ -1300,6 +1377,7 @@ Singleton {
                 root._claudeProcess.signal(15);
                 root._claudeProcess = null;
             }
+            root._runningProvider = null;
         }
     }
 
@@ -1339,17 +1417,35 @@ Singleton {
             finishResponse(tr("error.unknownProvider") + " " + providerId);
             return;
         }
-        if (_signedIn[providerId] === true) { _launchChecked(prompt); return; }
+        // The model id is resolved through the catalog. Right after a provider
+        // switch the list still belongs to the previous provider, and a CLI
+        // handed another provider's id ("Qwen3.8-Flash" to claude) fails with
+        // no explanation. Claude keeps working: its bare aliases are valid
+        // without the catalog.
+        if (!providerOrClaude.aliasModels && _modelsProvider !== providerId) {
+            refreshModels();
+            finishResponse(tr("error.modelsNotReady"));
+            return;
+        }
+        if (!providerOrClaude.aliasModels && modelsError !== "") {
+            finishResponse(modelsError);
+            return;
+        }
+        if (_signedIn[providerId] === true && !providerOrClaude.liveSignIn) { _launchChecked(prompt); return; }
         var request = _requestId;
         runQuietExit("python3 " + shellQuote(secretsScript) + " check " + shellQuote(providerId), function(output) {
             if (request !== _requestId) return;
             if (String(output).trim() === "set") {
-                _signedIn[providerId] = true;
+                // A live service check (cc9's gateway) is not a login: caching
+                // it would let the wrapper fall back to its Tokenator presets
+                // for the rest of the shell's life once the gateway goes down.
+                if (!providerOrClaude.liveSignIn) _signedIn[providerId] = true;
                 _launchChecked(prompt);
             } else {
-                // A registry provider has no per-provider hint: the generic
-                // line covers it instead of showing the key name itself.
-                var hintKey = "loginHint." + providerId;
+                // A registry provider names its adapter (codex, an OpenAI
+                // gateway) or falls back to the generic line instead of
+                // showing the key name itself.
+                var hintKey = Providers.hintKey(providerOrClaude);
                 var hint = I18n.has(uiLanguage, hintKey) ? tr(hintKey) : tr("loginHint.generic");
                 finishResponse(tr("error.notLoggedIn") + " (" + provider.title + "). " + hint);
             }
@@ -1358,18 +1454,10 @@ Singleton {
 
     function _launchClaude(prompt) {
         // Context transfer (step 4): a carried chat goes along as a context
-        // file. Registry bridges take the file path in the config line,
-        // written 0600 before the launch; claude-like providers take the same
-        // text prepended to the prompt — no file at all. The openai gateway
-        // has no native history at all: every turn there is a "transfer", so
-        // the whole chat text rides along each time. A failed or cancelled
-        // turn rearms the snapshot for the retry.
+        // file for the registry bridges (written 0600 before the launch), and
+        // as text prepended to the prompt for every CLI that takes the query
+        // as an argument or on stdin — claude, CVC, cc9, Qoder and Kimi alike.
         var carried = _carriedContext;
-        if (carried.length > 0 && !providerOrClaude.stdinUserFormat) {
-            rearmCarriedContext();
-            finishResponse(tr("error.contextUnsupported"), true);
-            return;
-        }
         if (carried.length > 0 && providerOrClaude.adapter) {
             statusText = tr("status.processing");
             var request = _requestId;
@@ -1409,6 +1497,17 @@ Singleton {
         exitGrace.stop();
         cancelFallback.stop();
         cancelCloseStdin.stop();
+        // A run the user stopped can still be alive: the CLI answers the
+        // interrupt with a result event and then waits on stdin. If a new
+        // message starts before that (Stop clears busy at once, so it can),
+        // close the old pipe now — otherwise its timers are cancelled below,
+        // its exit is ignored (it is no longer _claudeProcess) and the process
+        // lingers forever. The new run owns the timers from here.
+        if (_claudeProcess) {
+            try { _claudeProcess.stdinEnabled = false; } catch (e) {}
+            _claudeProcess = null;
+        }
+        _runningProvider = null;
         statusText = tr(activeEffort !== "" ? "status.thinking" : "status.processing");
         _gotResult = false;
         _cancelled = false;
@@ -1429,10 +1528,11 @@ Singleton {
             prompt: prompt,
             resumeId: sessionId,
             secretsScript: secretsScript,
-            stateDir: homeDir + "/.local/state/dms-agent",
+            stateDir: agentStateDir,
             bridgeScript: bridgeScript,
             q: shellQuote
         });
+        _runningProvider = providerOrClaude;
 
         var props = { shellCmd: cmd };
         // The prompt goes in through stdin for every provider whose CLI speaks
@@ -1500,7 +1600,12 @@ Singleton {
                     addMessage("tool_status", step);
                     statusText = step;
                 } else if (block.type === "text" && block.text) {
-                    _lastText = block.text;
+                    // Some providers send one text block per model turn (or per
+                    // streamed chunk) and their "result" carries no answer;
+                    // keeping only the last block dropped everything before a
+                    // tool call (Kimi, caught reviewing 2026-11-06). The
+                    // result's own `result` field still wins in resultText().
+                    _lastText = _lastText ? _lastText + "\n\n" + block.text : block.text;
                     statusText = tr("status.writing");
                 }
             }
@@ -1518,6 +1623,7 @@ Singleton {
             // Closing stdin lets a confirm-mode agent (which waits for further messages) exit.
             if (_claudeProcess) _claudeProcess.stdinEnabled = false;
             _claudeProcess = null;
+            _runningProvider = null;
             permissionQueue = [];
             handleResult(ev);
         }

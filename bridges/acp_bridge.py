@@ -33,6 +33,7 @@ Protocol details that matter (checked against the spec and live agents):
 """
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -41,19 +42,24 @@ import time
 
 JSONRPC = "2.0"
 
-_pending_permissions = {}          # rpc id -> None (open requests)
+_pending_permissions = {}          # rpc id -> our interface request id (string)
 _permission_queue = queue.Queue()  # rpc id -> user control_response
 _state_lock = threading.Lock()
 _state = {
     "rpc_id": 0,
     "session": "",
-    "turn_done": False,            # result emitted for the current turn
+    # No turn is in flight at startup, so an initialize/session failure can
+    # emit its own error result instead of being swallowed by the guard.
+    "turn_done": True,
     "cancelled": False,
     "waiting": False,              # a session/prompt is in flight
+    "replaying": False,            # session/load streams the old history
+    "turn_text": [],
 }
 
 _pending_rpc = {}                  # rpc id -> queue to receive the response
 _pending_permission_options = {}   # rpc id -> options offered to the UI
+_ui_permission_ids = {}            # our interface id -> rpc id
 
 
 def out(obj):
@@ -80,15 +86,23 @@ def next_id():
 
 
 def rpc(method, params, timeout=None):
-    """Send a request, return the response (or raise on error response)."""
+    """Send a request, return the response (or raise on error response).
+
+    Every call is bounded: an agent that never answers initialize/session/new
+    used to block the bridge (and the chat on "processing") forever. A timeout
+    is an RpcError, which the callers already turn into an error result."""
     rid = next_id()
     q = queue.Queue(maxsize=1)
     with _state_lock:
         _pending_rpc[rid] = q
     agent_send({"jsonrpc": JSONRPC, "id": rid, "method": method, "params": params})
-    item = q.get(timeout=timeout) if timeout else q.get()
-    with _state_lock:
-        _pending_rpc.pop(rid, None)
+    try:
+        item = q.get(timeout=timeout or float(os.environ.get("ACP_RPC_TIMEOUT", "120")))
+    except queue.Empty:
+        raise RpcError({"code": -32000, "message": "timeout waiting for %s" % method})
+    finally:
+        with _state_lock:
+            _pending_rpc.pop(rid, None)
     if isinstance(item, dict) and "error" in item:
         raise RpcError(item["error"])
     return item.get("result", {}) if isinstance(item, dict) else {}
@@ -181,6 +195,16 @@ def emit_result(session_id, is_error, text, errors=None):
 # --- agent stdout reader ------------------------------------------------------
 
 def handle_update(update):
+    if not isinstance(update, dict):
+        return
+    # session/load streams the WHOLE previous conversation back as
+    # notifications. They arrive before the new prompt and are not the answer:
+    # showing them as fresh messages (and joining them into the result) made
+    # every resumed ACP turn repeat its own history.
+    with _state_lock:
+        replaying = _state.get("replaying", False)
+    if replaying:
+        return
     kind = update.get("sessionUpdate")
     if kind == "agent_message_chunk":
         block = acp_content_to_canon(update.get("content"))
@@ -218,14 +242,27 @@ def handle_agent_request(req):
     method = req.get("method", "")
     rid = req.get("id")
     params = req.get("params", {}) or {}
+    if not isinstance(params, dict):
+        params = {}
     if method == "session/request_permission":
-        with _state_lock:
-            _pending_permissions[rid] = None
         options = params.get("options", []) or []
+        tool_call = params.get("toolCall") or {}
+        if not isinstance(tool_call, dict):
+            tool_call = {}
+        title = tool_call.get("title") or tool_call.get("kind") or "tool"
+        raw_input = tool_call.get("rawInput")
+        # The chat reads the canonical claude fields (tool_name/input); the
+        # ACP-specific fields stay for anything that wants them.
+        ui_id = "perm-%d" % next_id()
+        with _state_lock:
+            _pending_permissions[rid] = ui_id
+            _ui_permission_ids[ui_id] = rid
         _pending_permission_options[rid] = options
-        out({"type": "control_request", "request_id": str(rid),
+        out({"type": "control_request", "request_id": ui_id,
              "request": {"subtype": "can_use_tool",
-                         "tool_call": params.get("toolCall", {}).get("title", "tool"),
+                         "tool_name": title,
+                         "input": raw_input if isinstance(raw_input, dict) else {},
+                         "tool_call": title,
                          "options": options}})
         return
     # Unknown agent request: a protocol error so it never blocks the loop.
@@ -234,6 +271,11 @@ def handle_agent_request(req):
 
 
 def cancel_permission(rpc_id):
+    with _state_lock:
+        ui_id = _pending_permissions.pop(rpc_id, None)
+        if ui_id is not None:
+            _ui_permission_ids.pop(ui_id, None)
+        _pending_permission_options.pop(rpc_id, None)
     agent_send({"jsonrpc": JSONRPC, "id": rpc_id,
                 "result": {"outcome": {"outcome": "cancelled"}}})
 
@@ -263,8 +305,9 @@ def _reader_inner(proc):
             rid = msg["id"]
             with _state_lock:
                 pending_perm = rid in _pending_permissions
-            if pending_perm and _state["cancelled"]:
-                # Response to a request we already cancelled.
+            # A response to a permission request is handled by the turn loop,
+            # not routed as an RPC answer; a stale one is dropped there.
+            if pending_perm:
                 continue
             q = _pending_rpc.get(rid)
             if q is not None:
@@ -277,7 +320,11 @@ def _reader_inner(proc):
             handle_agent_request(msg)
             continue
         if msg.get("method") == "session/update":
-            handle_update(msg.get("params", {}).get("update", {}))
+            params = msg.get("params")
+            # A malformed notification from a newer agent must not kill the
+            # reader thread and leave a bridge that can never finish a turn.
+            if isinstance(params, dict):
+                handle_update(params.get("update", {}))
             continue
     # EOF: the agent died; end the turn if one is running.
     out({"type": "bridge_event", "event": "eof"})
@@ -304,9 +351,27 @@ def resolve_permission(resp, options):
 def cancel_all_permissions():
     with _state_lock:
         ids = list(_pending_permissions)
-        _pending_permissions.clear()
     for rid in ids:
         cancel_permission(rid)
+
+
+def take_permission_answer(resp):
+    """Our interface request id -> the still-open JSON-RPC request.
+
+    The id shown to the chat is bridge-minted ("perm-3"), so a string or an
+    integer JSON-RPC id from the agent is irrelevant here; an answer for a
+    request that was already answered or cancelled is dropped instead of being
+    sent to the agent a second time (two results for one id) or applied to the
+    next turn.
+    """
+    ui_id = str((resp or {}).get("request_id", ""))
+    with _state_lock:
+        rid = _ui_permission_ids.pop(ui_id, None)
+        if rid is None:
+            return None
+        _pending_permissions.pop(rid, None)
+        options = _pending_permission_options.pop(rid, [])
+    return rid, resp, options
 
 
 # --- stdin (service) reader ----------------------------------------------------
@@ -358,8 +423,12 @@ def apply_model_via_models(sid, want):
     return []
 
 
-def apply_config(sid, cfg):
-    """Apply and verify requested settings against the agent's config options."""
+def apply_config(sid, cfg, allow_missing_model=False):
+    """Apply and verify requested settings against the agent's config options.
+
+    allow_missing_model: a resumed session whose LoadSessionResponse carries no
+    configOptions (optional in ACP v1). The agent then keeps the model the
+    session was created with; there is nothing to set and nothing to fail."""
     for field in ("model", "effort"):
         want = cfg.get(field)
         if not want:
@@ -370,10 +439,18 @@ def apply_config(sid, cfg):
         matches = [o for o in options if isinstance(o, dict) and o.get("category") in categories]
         if len(matches) != 1 or not matches[0].get("id") or matches[0].get("type") != "select":
             if field == "model":
+                # The second config shape (models.availableModels +
+                # session/set_model).
                 errors = apply_model_via_models(sid, want)
-                if errors:
+                with _state_lock:
+                    have_catalog = bool(_state.get("models"))
+                if errors and have_catalog:
+                    return errors
+                if errors and not allow_missing_model:
                     return errors
                 continue
+            if len(matches) == 0:
+                return ["config %s: option unavailable" % field]
             return ["config %s: option unavailable or ambiguous" % field]
         option = matches[0]
         values = []
@@ -425,12 +502,9 @@ def stdin_reader():
         # turn blocks the main dispatcher while it waits for exactly these.
         mtype = msg.get("type")
         if mtype == "control_response":
-            resp = msg.get("response", {}) or {}
-            try:
-                rid = int(resp.get("request_id"))
-            except (TypeError, ValueError):
-                continue
-            _permission_queue.put((rid, resp))
+            resolved = take_permission_answer(msg.get("response") or {})
+            if resolved is not None:
+                _permission_queue.put(resolved)
             continue
         if mtype == "cancel":
             do_cancel()
@@ -465,12 +539,9 @@ def service_loop(proc):
                 _state["config"] = {k: msg.get(k) for k in ("model", "effort", "resumeId", "contextFile")}
             continue
         if mtype == "control_response":
-            resp = msg.get("response", {}) or {}
-            try:
-                rid = int(resp.get("request_id"))
-            except (TypeError, ValueError):
-                continue
-            _permission_queue.put((rid, resp))
+            resolved = take_permission_answer(msg.get("response") or {})
+            if resolved is not None:
+                _permission_queue.put(resolved)
             continue
         if mtype == "cancel":
             do_cancel()
@@ -490,6 +561,10 @@ def run_turn(msg):
         _state["cancelled"] = False
         _state["waiting"] = True
         _state["turn_text"] = []
+        # session/load and session/new may stream updates that belong to the
+        # session's history, not to this turn: drop them until the prompt is
+        # actually sent.
+        _state["replaying"] = True
 
     try:
         sid = ensure_session(resume_id)
@@ -498,7 +573,7 @@ def run_turn(msg):
         with _state_lock:
             _state["session"] = sid
 
-        errors = apply_config(sid, cfg)
+        errors = apply_config(sid, cfg, allow_missing_model=bool(resume_id))
         if errors:
             emit_result(sid, True, "", errors)
             return
@@ -518,6 +593,10 @@ def run_turn(msg):
         prompt_q = queue.Queue(maxsize=1)
         with _state_lock:
             _pending_rpc[prompt_id] = prompt_q
+            # History replay (session/load) stops counting as replay only when
+            # the real prompt goes out; config updates in between are not part
+            # of the turn's answer either.
+            _state["replaying"] = False
         agent_send({"jsonrpc": JSONRPC, "id": prompt_id, "method": "session/prompt",
                     "params": {"sessionId": sid, "prompt": content}})
 
@@ -527,6 +606,16 @@ def run_turn(msg):
         prompt_answer = None
         turn_deadline = time.monotonic() + float(os.environ.get("ACP_TURN_TIMEOUT", "300"))
         while True:
+            # Cancel, EOF and the timeout emit the turn's result from another
+            # thread. Leave the loop for it instead of spinning until the
+            # prompt reply arrives (up to five minutes) with the next message
+            # stuck behind this one.
+            with _state_lock:
+                finished_elsewhere = _state["turn_done"]
+            if finished_elsewhere:
+                with _state_lock:
+                    _pending_rpc.pop(prompt_id, None)
+                break
             if time.monotonic() > turn_deadline:
                 agent_send({"jsonrpc": JSONRPC, "method": "session/cancel",
                             "params": {"sessionId": sid}})
@@ -535,12 +624,7 @@ def run_turn(msg):
                 return
             # Any pending permission the user answered?
             try:
-                rid, resp = _permission_queue.get(timeout=0.1)
-                # Find the matching permission request's offered options: the
-                # request_id in control_response is the agent's rpc id; the
-                # options were already sent to the UI. Resolve with the real
-                # ones captured when the request went out.
-                opts = _pending_permission_options.get(rid, [])
+                rid, resp, opts = _permission_queue.get(timeout=0.1)
                 option_id = resolve_permission(resp, opts)
                 if option_id is None:
                     # No safe mapping: refuse rather than invent an id.
@@ -549,9 +633,8 @@ def run_turn(msg):
                     emit_result(sid, True, "", turn_errors)
                     return
                 agent_send({"jsonrpc": JSONRPC, "id": rid,
-                            "result": {"outcome": {"outcome": "chosen", "optionId": option_id}}})
-                with _state_lock:
-                    _pending_permissions.pop(rid, None)
+                            "result": {"outcome": {"outcome": "selected",
+                                                   "optionId": option_id}}})
                 continue
             except queue.Empty:
                 pass
@@ -564,14 +647,10 @@ def run_turn(msg):
             except queue.Empty:
                 pass
 
-            if _state["cancelled"]:
-                # session/cancel sent; the agent may still answer the prompt.
-                continue
-
         with _state_lock:
             _state["waiting"] = False
         if prompt_answer is None:
-            emit_result(sid, True, "", turn_errors or ["no prompt response"])
+            # The turn was ended elsewhere (cancel/EOF); its result is out.
             return
         if "error" in prompt_answer:
             emit_result(sid, True, "", [prompt_answer["error"].get("message", "prompt failed")])
@@ -588,6 +667,13 @@ def run_turn(msg):
             sid = _state.get("session", "")
         emit_result(sid, True, "", ["bridge error: %s" % e])
         raise
+    finally:
+        # A turn that ended on an early return (config error, cancel) must not
+        # leave "waiting" set: the EOF handler would report a dead agent as a
+        # second failure of a turn that is already over.
+        with _state_lock:
+            _state["waiting"] = False
+            _state["replaying"] = False
 
 
 def ensure_session(resume_id):
@@ -604,9 +690,19 @@ def ensure_session(resume_id):
             result = rpc("session/new", {"cwd": os.getcwd(), "mcpServers": []})
             sid = result.get("sessionId", "")
         with _state_lock:
-            _state["config_options"] = config_options_from(result)
-            _state["models"] = models_from(result)
-            _state["current_model"] = current_model_from(result)
+            # session/load may legitimately carry neither configOptions nor a
+            # models list (LoadSessionResponse.configOptions is optional): keep
+            # what the process already knows instead of wiping the catalog and
+            # failing every model selection.
+            loaded_options = config_options_from(result)
+            loaded_models = models_from(result)
+            if loaded_options:
+                _state["config_options"] = loaded_options
+            if loaded_models:
+                _state["models"] = loaded_models
+            current = current_model_from(result)
+            if current:
+                _state["current_model"] = current
     except RpcError as e:
         emit_result("", True, "", ["cannot start session: %s" % e])
         return None
@@ -616,14 +712,46 @@ def ensure_session(resume_id):
     return sid
 
 
+def stop_agent(proc=None, force=False):
+    """Terminate the agent AND its descendants.
+
+    The agent is started in its own process group, so a tool process it
+    spawned cannot outlive the bridge when Stop kills the bridge."""
+    proc = proc or _agent_proc[0]
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL if force else signal.SIGTERM)
+    except OSError:
+        try:
+            proc.kill() if force else proc.terminate()
+        except OSError:
+            pass
+
+
+def _on_term(signum, frame):
+    proc = _agent_proc[0]
+    stop_agent(proc)
+    try:
+        if proc is not None:
+            proc.wait(timeout=3)
+    except (subprocess.TimeoutExpired, OSError):
+        stop_agent(proc, force=True)
+    sys.exit(0)
+
+
 def main():
     if len(sys.argv) < 2:
         sys.stderr.write("usage: acp_bridge.py <agent-command...>\n")
         sys.exit(2)
     proc = subprocess.Popen(sys.argv[1:], stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, stderr=None, text=True,
-                            bufsize=1)
+                            bufsize=1, start_new_session=True)
     _agent_proc[0] = proc
+    # Stop in the chat SIGTERMs the bridge; without this the agent (and any
+    # tool process it started) would keep running with nobody reading it.
+    signal.signal(signal.SIGTERM, _on_term)
+    signal.signal(signal.SIGINT, _on_term)
     t = threading.Thread(target=reader, args=(proc,), daemon=True)
     t.start()
     st = threading.Thread(target=stdin_reader, daemon=True)
@@ -635,6 +763,7 @@ def main():
         rpc("initialize", {"protocolVersion": 1, "clientCapabilities": {"fs": {}}})
     except Exception as e:
         emit_result("", True, "", ["initialize failed: %s" % e])
+        stop_agent(proc, force=True)
         sys.exit(1)
     try:
         service_loop(proc)
@@ -646,7 +775,7 @@ def main():
         try:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            stop_agent(proc, force=True)
 
 
 if __name__ == "__main__":

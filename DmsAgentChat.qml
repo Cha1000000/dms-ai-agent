@@ -1197,8 +1197,10 @@ Item {
         // per-row crosses.
         Rectangle {
             id: clearAllButton
-            visible: AgentService.history.length > 0 && !AgentService.history.some(function(row) {
-                return row.workDir && row.workDir !== AgentService.workDir;
+            // Rows from other folders are listed too, but this action only
+            // touches the current one; without a row here it would do nothing.
+            visible: AgentService.history.some(function(row) {
+                return !row.workDir || row.workDir === AgentService.workDir;
             })
             anchors.top: parent.top; anchors.right: parent.right
             anchors.topMargin: chatRoot.gap; anchors.rightMargin: Theme.spacingS
@@ -1346,7 +1348,7 @@ Item {
                         }
                     }
                 }
-                MouseArea { id: hArea; anchors.fill: parent; hoverEnabled: true; z: -1; enabled: !historyRow.editing; onClicked: { messageModel.clear(); AgentService.resumeSession(modelData.id, modelData.workDir || ""); historyDropdown.visible = false; } }
+                MouseArea { id: hArea; anchors.fill: parent; hoverEnabled: true; z: -1; enabled: !historyRow.editing; onClicked: { if (!AgentService.resumeSession(modelData.id, modelData.workDir || "")) return; messageModel.clear(); historyDropdown.visible = false; } }
                 TipArea {
                     text: (AgentService.providerKnown ? AgentService.provider.title : AgentService.providerId)
                         + (historyRow.otherDir ? "\n" + modelData.workDir + "\n" + AgentService.tr("history.foreignActions") : "")
@@ -1364,14 +1366,21 @@ Item {
     function askDeleteSession(id, title, workDir) {
         confirmSessionId = id;
         confirmText = AgentService.tr("confirm.deleteOne") + "\n\n" + title
-            + (workDir ? "\n\n" + workDir : "");
+            + (workDir ? "\n\n" + AgentService.tr("confirm.foreignDelete") + "\n" + workDir : "");
         confirmDialog.visible = true;
     }
 
     function askDeleteAll() {
         confirmSessionId = "";
-        confirmText = AgentService.tr("confirm.deleteAll", { n: AgentService.history.length })
-            + "\n\n" + AgentService.tr("confirm.irreversible");
+        // Only the current folder is touched by the delete-all action; the
+        // panel may also show sessions of other folders (--all-dirs), so the
+        // count and the scope are stated instead of hiding the button.
+        const here = AgentService.history.filter(function(row) {
+            return !row.workDir || row.workDir === AgentService.workDir;
+        }).length;
+        confirmText = AgentService.tr("confirm.deleteAll", { n: here })
+            + "\n\n" + AgentService.tr("confirm.deleteAllScope")
+            + "\n" + AgentService.tr("confirm.irreversible");
         confirmDialog.visible = true;
     }
 

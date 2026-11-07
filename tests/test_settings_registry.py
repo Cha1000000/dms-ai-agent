@@ -16,6 +16,7 @@ def run_script(body):
         functions.append(source[start:end])
     harness = """
 const I18n = {t: (_, key) => key}, root = {uiLanguage: 'en'};
+const Providers = {all: () => ['claude', 'cvc', 'cc9', 'qoder', 'kimi'].map(id => ({id}))};
 let providers = {}, registryLoaded = true, loadFailed = false, formError = '';
 let pendingId = '', pendingEntry = null, pendingKey = '', pendingCommandText = '', pendingUrlValue = '', pendingNeedsUrl = false;
 let saveProc = {running: false}, keyProc = {running: false};
@@ -70,3 +71,14 @@ let cases = [
 console.log(JSON.stringify(cases.map(x => validateEntry('example', x))));
 """)
     assert result == ["settings.reg.badFields", "settings.reg.badUrl", "settings.reg.badUrl", "settings.reg.badAdapter", "settings.reg.needCommand"]
+
+
+def test_builtin_provider_ids_cannot_be_added():
+    result = run_script("""
+console.log(JSON.stringify([
+  validateEntry('claude', {adapter:'acp',command:['tool']}),
+  validateEntry('cvc', {adapter:'openai',baseUrl:'https://x.example/v1'}),
+  validateEntry('my-gw', {adapter:'openai',baseUrl:'https://x.example/v1'}),
+]));
+""")
+    assert result == ["settings.reg.reservedId", "settings.reg.reservedId", ""]

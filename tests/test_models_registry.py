@@ -80,7 +80,18 @@ def test_openai_mapper_reads_data_list():
     out = models.map_openai_models(payload, "https://gw.example/v1")
     assert out[0]["id"] == "gpt-x"
     assert out[0]["resolved"] == "gpt-x"
+    # No display_name → the id is the label. `owned_by` is the provider of 600
+    # gateway rows ("kc", "ag", "qd"): using it made hundreds of identical rows.
+    assert out[0]["label"] == "gpt-x"
+    assert out[0]["desc"] == "vendor"
     assert out[0]["efforts"] == []
+
+
+def test_an_unknown_registered_adapter_is_an_error(monkeypatch):
+    monkeypatch.setattr(models, "_registered", {"weird": {"adapter": "mystery"}})
+    monkeypatch.setattr(models, "_registered_adapters", {"weird": "mystery"})
+    with pytest.raises(RuntimeError):
+        models.fetch_models_for("weird")
 
 
 def test_acp_registry_provider_has_no_catalog_yet(registry_state):
@@ -121,6 +132,9 @@ def test_acp_mapper_reads_config_options_form():
     ]}
     out = models.map_acp_models(result)
     assert [m["id"] for m in out] == ["m-fast", "m-big"]
+    # The effort config option is session-level and drives the bridge's
+    # set_config_option, so the chip must offer its real values.
+    assert out[0]["efforts"] == ["low"]
 
 
 def test_acp_mapper_filters_combo_and_tokenator():

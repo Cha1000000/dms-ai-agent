@@ -22,6 +22,7 @@
 import json
 import os
 import select
+import signal
 import subprocess
 import sys
 import time
@@ -129,6 +130,11 @@ def test_permission_roundtrip():
         assert req["request_id"]
         tool_call = req["request"]["tool_call"]
         assert tool_call
+        # The chat reads the canonical claude fields: a title and the tool's
+        # arguments, not the ACP-only `tool_call` key (the dialog used to show
+        # "undefined").
+        assert req["request"]["tool_name"] == "run something"
+        assert req["request"]["input"] == {"command": "ls -la"}
         # Отвечаем разрешением — мост должен выбрать РЕАЛЬНЫЙ optionId.
         b.send({"type": "control_response", "response": {
             "subtype": "success", "request_id": req["request_id"],
@@ -186,6 +192,62 @@ def test_cancel_terminates_turn():
         assert result is not None, "cancel must end the turn with a result"
         assert result["is_error"] is True, result
     finally:
+        b.close()
+
+
+def test_a_string_json_rpc_id_for_a_permission_is_answered(tmp_path):
+    """ACP RequestId may be a string; the UI id is bridge-minted, so the
+    agent's own id never has to survive the round trip."""
+    b = Bridge(["--ask", "--string-permission-id"])
+    try:
+        b.send(user_msg("сделай"))
+        req = None
+        while True:
+            ev = read_event(b.reader, timeout=10)
+            if ev is None:
+                break
+            if ev.get("type") == "control_request":
+                req = ev
+                break
+        assert req is not None
+        b.send({"type": "control_response", "response": {
+            "subtype": "success", "request_id": req["request_id"],
+            "response": {"behavior": "allow"}}})
+        result = b.read_until_result()
+        assert result is not None and result["is_error"] is False, result
+    finally:
+        b.close()
+
+
+def test_sigterm_stops_the_agent_it_started(tmp_path):
+    """Stop in the chat SIGTERMs the bridge: the agent (which may be busy in a
+    turn and not exit on stdin EOF) must be terminated with it."""
+    pidfile = tmp_path / "agent.pid"
+    child = None
+    b = Bridge(["--ignore-eof", "--pidfile=" + str(pidfile)])
+    try:
+        deadline = time.time() + 10
+        while time.time() < deadline and not pidfile.exists():
+            time.sleep(0.05)
+        assert pidfile.exists(), "mock agent never started"
+        child = int(pidfile.read_text())
+        b.proc.terminate()
+        deadline = time.time() + 6
+        alive = True
+        while time.time() < deadline:
+            try:
+                os.kill(child, 0)
+            except ProcessLookupError:
+                alive = False
+                break
+            time.sleep(0.1)
+        assert not alive, "the agent outlived the bridge"
+    finally:
+        if child is not None:
+            try:
+                os.kill(child, signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                pass
         b.close()
 
 
