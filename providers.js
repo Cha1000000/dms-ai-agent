@@ -39,7 +39,7 @@ PROVIDERS.claude = {
         perSessionRestore: true
     },
 
-    // opts: { model, effort, confirm, systemPrompt, prompt, resumeId, cli }
+    // opts: { model, effort, confirm, systemPrompt, prompt, resumeId, cli, envPrefix }
     buildCommand: function (opts) {
         var confirm = !!opts.confirm;
         // The prompt always comes through stdin, never as an argument and never
@@ -47,7 +47,8 @@ PROVIDERS.claude = {
         // stops the current turn on a control_request/interrupt, and it only
         // reads that from a live pipe — with the prompt in a heredoc the stdin
         // is already closed and the interrupt never arrives.
-        var cmd = "DMS_AGENT=1 exec " + (opts.cli || "claude") + " -p"
+        var cmd = (opts.envPrefix ? opts.envPrefix + " " : "")
+            + "DMS_AGENT=1 exec " + (opts.cli || "claude") + " -p"
             + " --model " + opts.q(opts.model)
             + (opts.effort ? " --effort " + opts.q(opts.effort) : "")
             + " --input-format stream-json"
@@ -132,7 +133,12 @@ PROVIDERS.cc9 = {
     },
 
     buildCommand: function (opts) {
-        return PROVIDERS.claude.buildCommand(Object.assign({}, opts, {cli: "cc9"}));
+        // CC9_NO_FALLBACK: the wrapper switches to the Tokenator when its
+        // gateway is down. Jarvis must never run a Tokenator model, and the
+        // readiness check alone cannot close the gap between the check and
+        // the wrapper's own check — so the wrapper is told to fail instead.
+        return PROVIDERS.claude.buildCommand(Object.assign({}, opts,
+                       { cli: "cc9", envPrefix: "CC9_NO_FALLBACK=1" }));
     },
 
     stdinUserFormat: PROVIDERS.claude.stdinUserFormat,

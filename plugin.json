@@ -3,7 +3,7 @@
     "id": "dmsAgent",
     "name": "DMS AI Agent",
     "description": "AI desktop assistant: Claude Code (default), CheapVibeCode, 9Router (cc9), Qoder, Kimi Code or your own ACP/Codex/gateway provider — live tool progress, voice input, per-monitor chat",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "license": "MIT",
     "author": "francis, Cha1000000",
     "icon": "smart_toy",

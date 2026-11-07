@@ -68,6 +68,9 @@ def test_the_command_runs_the_cc9_wrapper():
     assert "--model 'cvc/claude-opus-5-5'" in cmd
     assert "--effort 'high'" in cmd
     assert "--permission-prompt-tool stdio" in cmd
+    # The wrapper switches to the Tokenator when the gateway is down; Jarvis
+    # must never run a Tokenator model, so it forbids that fallback.
+    assert "CC9_NO_FALLBACK=1" in cmd
 
 
 def test_the_catalog_comes_from_the_cc9_wrapper(tmp_path, monkeypatch):

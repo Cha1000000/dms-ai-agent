@@ -972,7 +972,7 @@ Item {
             visible: AgentService.modelsError === ""
             model: AgentService.models
             delegate: Rectangle {
-                width: ListView.view.width; height: chatRoot.rowHeight; radius: Theme.cornerRadius - Theme.spacingXS
+                width: modelList.width; height: chatRoot.rowHeight; radius: Theme.cornerRadius - Theme.spacingXS
                 color: optArea.containsMouse ? Theme.withAlpha(AgentTheme.hoverTint, 0.3) : "transparent"
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM; spacing: chatRoot.gap
@@ -981,7 +981,7 @@ Item {
                     StyledText {
                         text: modelData.label
                         elide: Text.ElideRight
-                        Layout.maximumWidth: Math.floor(ListView.view.width * 0.55)
+                        Layout.maximumWidth: Math.floor(modelList.width * 0.55)
                         font.pixelSize: Theme.fontSizeSmall
                         font.weight: AgentService.isCurrentModel(modelData) ? Font.Bold : Font.Normal
                         color: AgentService.isCurrentModel(modelData) ? AgentTheme.surfaceText : AgentTheme.surfaceVariantText
@@ -989,7 +989,7 @@ Item {
                     StyledText {
                         text: AgentService.modelDesc(modelData)
                         elide: Text.ElideRight
-                        Layout.maximumWidth: Math.floor(ListView.view.width * 0.35)
+                        Layout.maximumWidth: Math.floor(modelList.width * 0.35)
                         font.pixelSize: Theme.fontSizeSmall
                         color: Theme.withAlpha(AgentTheme.surfaceVariantText, 0.5)
                     }
@@ -1236,6 +1236,7 @@ Item {
         }
 
         DankListView {
+            id: historyList
             anchors.fill: parent; anchors.margins: Theme.spacingXS; anchors.topMargin: chatRoot.fieldHeight; clip: true; spacing: 0
             visible: AgentService.history.length > 0
             model: AgentService.history
@@ -1248,7 +1249,7 @@ Item {
                     editing = false;
                     if (save && renameInput.text.trim() !== modelData.title) AgentService.renameSession(modelData.id, renameInput.text);
                 }
-                width: ListView.view.width; height: chatRoot.rowHeight + Theme.spacingXS; radius: Theme.cornerRadius - Theme.spacingXS
+                width: historyList.width; height: chatRoot.rowHeight + Theme.spacingXS; radius: Theme.cornerRadius - Theme.spacingXS
                 color: hArea.containsMouse || editing ? Theme.withAlpha(AgentTheme.hoverTint, 0.3) : "transparent"
                 // Registry-backed providers list sessions from every directory
                 // (--all-dirs): a row from another one is marked, and its

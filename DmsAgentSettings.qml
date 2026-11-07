@@ -16,11 +16,46 @@ PluginSettings {
 
     // The interface language, the same rule the chat uses: the Language
     // setting is about speech recognition, but someone who fixes it to their
-    // own language means the plugin to speak it too.
+    // own language means the plugin to speak it too. Left on "auto" the
+    // interface follows the locale. The page reads the setting itself: unlike
+    // the chat it has no live property handed down by DmsAgent.qml.
+    property string languageSetting: "auto"
     readonly property string uiLanguage: {
-        var lang = Quickshell.env("LC_ALL") || Quickshell.env("LC_MESSAGES")
-                    || Quickshell.env("LANG") || "";
-        return String(lang).substring(0, 2).toLowerCase();
+        var lang = (languageSetting && languageSetting !== "auto") ? languageSetting : "";
+        if (!lang) {
+            var env = Quickshell.env("LC_ALL") || Quickshell.env("LC_MESSAGES")
+                        || Quickshell.env("LANG") || "";
+            lang = String(env).substring(0, 2);
+        }
+        return String(lang).toLowerCase();
+    }
+    function reloadLanguage() {
+        languageSetting = loadValue("voiceLanguage", "auto");
+    }
+    // PluginSettings already defines Component.onCompleted and
+    // onPluginServiceChanged (variants, child reloads); redefining either here
+    // would override them. A 0 ms timer and a change of our own flag do the
+    // post-init read instead.
+    property bool serviceReady: pluginService !== null
+    onServiceReadyChanged: Qt.callLater(reloadLanguage)
+    Timer {
+        interval: 0
+        running: true
+        onTriggered: root.reloadLanguage()
+    }
+    Connections {
+        target: root.pluginService
+        enabled: root.pluginService !== null
+        function onPluginDataChanged(changedPluginId) {
+            if (changedPluginId !== root.pluginId)
+                return;
+            root.reloadLanguage();
+            // The chat also changes claudeModel on its own: restoring the
+            // provider's saved model, or replacing a foreign id with one from
+            // the provider's catalog. Follow it, unless the field is focused.
+            if (modelSetting)
+                Qt.callLater(modelSetting.loadValue);
+        }
     }
 
     // Microphones offered in the dropdown. Sinks are outputs and streams are
@@ -30,7 +65,7 @@ PluginSettings {
     readonly property var micNodes: Pipewire.nodes.values.filter(n => n && n.audio && !n.isSink && !n.isStream)
 
     readonly property var micOptions: {
-        const list = [{ label: "System default", value: "" }];
+        const list = [{ label: I18n.t(root.uiLanguage, "settings.mic.default"), value: "" }];
         for (const node of micNodes)
             list.push({ label: micLabel(node), value: node.name });
         return list;
@@ -60,15 +95,14 @@ PluginSettings {
     readonly property var permissionModeOptions: {
         if (providerCanAskFirst)
             return [
-                { label: "Ask first", value: "confirm" },
-                { label: "No confirmation", value: "auto" }
+                { label: I18n.t(root.uiLanguage, "settings.permissions.ask"), value: "confirm" },
+                { label: I18n.t(root.uiLanguage, "settings.permissions.auto"), value: "auto" }
             ];
-        return [{ label: "No confirmation (ask first unavailable for this provider)", value: "auto" }];
+        return [{ label: I18n.t(root.uiLanguage, "settings.permissions.autoOnly"), value: "auto" }];
     }
     readonly property string permissionModeDesc: {
-        if (providerCanAskFirst)
-            return "Ask first: the chat shows an Allow / Deny dialog before the agent runs a command or changes a file. No confirmation: the agent acts immediately (Claude Code runs with --dangerously-skip-permissions, unrestricted shell access as you).";
-        return "This provider has no Ask first launch mode, so the chat runs it unattended (equivalent to --dangerously-skip-permissions). An ACP agent that requests permission itself still shows the Allow / Deny dialog.";
+        return I18n.t(root.uiLanguage, providerCanAskFirst
+                      ? "settings.permissions.descAsk" : "settings.permissions.descAuto");
     }
 
     // The mode is kept per provider. Forcing "auto" into the single stored key
@@ -85,6 +119,10 @@ PluginSettings {
                     : (canAsk ? "confirm" : "auto");
             if (permissionSelect.value !== want)
                 permissionSelect.value = want;
+            // The model is per provider too, and StringSetting reads its value
+            // once at creation: without this the field kept the previous
+            // provider's id while the chat already used the restored one.
+            Qt.callLater(modelSetting.loadValue);
         }
     }
 
@@ -143,7 +181,9 @@ PluginSettings {
             }
             stdout: StdioCollector {
                 onStreamFinished: {
-                    cvcKey.keyResult = String(text).trim() === "ok" ? "Saved" : "Failed to save";
+                    cvcKey.keyResult = String(text).trim() === "ok"
+                            ? I18n.t(root.uiLanguage, "settings.cvc.saved")
+                            : I18n.t(root.uiLanguage, "settings.cvc.saveFailed");
                     cvcKey.loadStatus();
                 }
             }
@@ -155,9 +195,10 @@ PluginSettings {
                 onStreamFinished: {
                     const out = String(text).trim();
                     if (out.indexOf("ok ") === 0)
-                        cvcKey.keyResult = "Key works — " + out.substring(3) + " models";
+                        cvcKey.keyResult = I18n.t(root.uiLanguage, "settings.cvc.works",
+                                                  { n: out.substring(3) });
                     else if (out === "missing")
-                        cvcKey.keyResult = "No key saved yet";
+                        cvcKey.keyResult = I18n.t(root.uiLanguage, "settings.cvc.missing");
                     else
                         cvcKey.keyResult = out;
                 }
@@ -166,13 +207,13 @@ PluginSettings {
         property string keyResult: ""
 
         StyledText {
-            text: "CheapVibeCode API key"
+            text: I18n.t(root.uiLanguage, "settings.cvc.title")
             font.pixelSize: Theme.fontSizeMedium
             font.weight: Font.Medium
             color: Theme.surfaceText
         }
         StyledText {
-            text: "Stored only on this machine in ~/.local/state/dms-agent/providers.json (0600), never in synced plugin settings. Get a key at cheapvibecode.ru."
+            text: I18n.t(root.uiLanguage, "settings.cvc.desc")
             font.pixelSize: Theme.fontSizeSmall
             color: Theme.surfaceVariantText
             width: parent.width
@@ -186,13 +227,15 @@ PluginSettings {
             DankTextField {
                 id: keyField
                 width: parent.width - saveBtn.width - testBtn.width - Theme.spacingM * 2
-                placeholderText: cvcKey.keyStatus === "set" ? "key saved — type to replace" : "sk-cvc-..."
+                placeholderText: cvcKey.keyStatus === "set"
+                                 ? I18n.t(root.uiLanguage, "settings.cvc.savedPlaceholder")
+                                 : I18n.t(root.uiLanguage, "settings.cvc.placeholder")
                 showPasswordToggle: true
                 echoMode: TextInput.Password
             }
             DankButton {
                 id: saveBtn
-                text: "Save"
+                text: I18n.t(root.uiLanguage, "settings.cvc.save")
                 onClicked: {
                     if (keyField.text.trim() === "") return;
                     keySave.pendingKey = keyField.text.trim();
@@ -202,9 +245,9 @@ PluginSettings {
             }
             DankButton {
                 id: testBtn
-                text: "Test"
+                text: I18n.t(root.uiLanguage, "settings.cvc.test")
                 onClicked: {
-                    cvcKey.keyResult = "Checking…";
+                    cvcKey.keyResult = I18n.t(root.uiLanguage, "settings.cvc.checking");
                     // models.py --provider cvc refreshes the cache and fails when
                     // the key is missing or rejected; that is the validation.
                     keyTest.running = true;
@@ -244,6 +287,18 @@ PluginSettings {
         property string pendingCommandText: ""
         property string pendingUrlValue: ""
         property bool pendingNeedsUrl: false
+        readonly property string registryPath: Quickshell.env("PROVIDER_REGISTRY")
+            || ((Quickshell.env("XDG_STATE_HOME")
+                 || (Quickshell.env("HOME") + "/.local/state")) + "/dms-agent/providers.json")
+
+        // The chat watches the same file; without a watcher here a provider
+        // added from the CLI (or another window) stayed invisible until the
+        // settings page was reopened.
+        FileView {
+            path: regProviders.registryPath
+            watchChanges: true
+            onFileChanged: regProviders.reload()
+        }
 
         function reload() {
             if (listProc.running) return;
@@ -991,7 +1046,7 @@ PluginSettings {
         spacing: Theme.spacingM
 
         StyledText {
-            text: "DMS AI Agent Settings"
+            text: I18n.t(root.uiLanguage, "settings.title")
             font.pixelSize: Theme.fontSizeLarge
             font.weight: Font.Bold
             color: Theme.surfaceText
@@ -1011,7 +1066,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 StyledText {
-                    text: "Provider"
+                    text: I18n.t(root.uiLanguage, "settings.section.provider")
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Bold
                     color: Theme.surfaceText
@@ -1024,8 +1079,8 @@ PluginSettings {
                 SavedSelection {
                     id: providerSelect
                     settingKey: "provider"
-                    label: "Agent"
-                    description: "Which agent CLI runs the chat. Claude Code is the default and works with the subscription you are signed in to. Other providers sign in on their own (an OAuth login or an API key) — see their status below once they are set up."
+                    label: I18n.t(root.uiLanguage, "settings.agent.label")
+                    description: I18n.t(root.uiLanguage, "settings.agent.desc")
                     defaultValue: "claude"
                     options: providerOptions
                 }
@@ -1042,39 +1097,40 @@ PluginSettings {
                 }
 
                 StyledText {
-                    text: "Model & Effort"
+                    text: I18n.t(root.uiLanguage, "settings.section.model")
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Bold
                     color: Theme.surfaceText
                 }
 
                 StringSetting {
+                    id: modelSetting
                     settingKey: "claudeModel"
-                    label: "Model"
-                    description: "haiku / sonnet / opus or a full id, e.g. claude-opus-5-5"
+                    label: I18n.t(root.uiLanguage, "settings.model.label")
+                    description: I18n.t(root.uiLanguage, "settings.model.desc")
                     placeholder: "haiku"
                     defaultValue: "haiku"
                 }
 
                 StringSetting {
                     settingKey: "effort"
-                    label: "Effort"
-                    description: "low, medium, high, xhigh or max; empty = auto. Only for models that support it."
+                    label: I18n.t(root.uiLanguage, "settings.effort.label")
+                    description: I18n.t(root.uiLanguage, "settings.effort.desc")
                     placeholder: "auto"
                     defaultValue: ""
                 }
 
                 ToggleSetting {
                     settingKey: "restoreSessionModel"
-                    label: "Per-session model"
-                    description: "Opening a chat from the history also switches to the model and effort it was last used with."
+                    label: I18n.t(root.uiLanguage, "settings.sessionModel.label")
+                    description: I18n.t(root.uiLanguage, "settings.sessionModel.desc")
                     defaultValue: true
                 }
 
                 StringSetting {
                     settingKey: "workDir"
-                    label: "Working directory"
-                    description: "Where the agent starts, as if you ran claude in a terminal there: it picks up that folder's CLAUDE.md and project settings and can work on its files. Applied as soon as you press Enter or leave the field: the chat switches to a new conversation with that folder's own history, and a folder chip with its name appears in the chat. Empty = a private folder (~/.local/state/dms-agent). Accepts ~/path or an absolute path."
+                    label: I18n.t(root.uiLanguage, "settings.workDir.label")
+                    description: I18n.t(root.uiLanguage, "settings.workDir.desc")
                     placeholder: "~/projects/my-app"
                     defaultValue: ""
                 }
@@ -1082,7 +1138,7 @@ PluginSettings {
                 SavedSelection {
                     id: permissionSelect
                     settingKey: "permissionMode"
-                    label: "Permissions"
+                    label: I18n.t(root.uiLanguage, "settings.permissions.label")
                     description: permissionModeDesc
                     defaultValue: "confirm"
                     options: permissionModeOptions
@@ -1090,14 +1146,14 @@ PluginSettings {
 
                 StringSetting {
                     settingKey: "maxTokens"
-                    label: "Max Tokens"
-                    description: "Maximum response length"
+                    label: I18n.t(root.uiLanguage, "settings.maxTokens.label")
+                    description: I18n.t(root.uiLanguage, "settings.maxTokens.desc")
                     placeholder: "1024"
                     defaultValue: "1024"
                 }
 
                 StyledText {
-                    text: "System Prompt"
+                    text: I18n.t(root.uiLanguage, "settings.section.prompt")
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Bold
                     color: Theme.surfaceText
@@ -1106,9 +1162,9 @@ PluginSettings {
 
                 StringSetting {
                     settingKey: "systemPrompt"
-                    label: "System Prompt"
-                    description: "Custom instructions (leave empty for default)"
-                    placeholder: "You are a helpful desktop assistant..."
+                    label: I18n.t(root.uiLanguage, "settings.systemPrompt.label")
+                    description: I18n.t(root.uiLanguage, "settings.systemPrompt.desc")
+                    placeholder: I18n.t(root.uiLanguage, "settings.systemPrompt.placeholder")
                     defaultValue: ""
                 }
             }
@@ -1128,7 +1184,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 StyledText {
-                    text: "Theme & Size"
+                    text: I18n.t(root.uiLanguage, "settings.section.appearance")
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Bold
                     color: Theme.surfaceText
@@ -1136,22 +1192,22 @@ PluginSettings {
 
                 SavedSelection {
                     settingKey: "themePreset"
-                    label: "Theme"
-                    description: "DMS Colors follows your DMS theme. Neon keeps the DMS surfaces but uses a blue neon accent and a gradient rim."
+                    label: I18n.t(root.uiLanguage, "settings.theme.label")
+                    description: I18n.t(root.uiLanguage, "settings.theme.desc")
                     defaultValue: "dms"
                     options: [
-                        { label: "DMS Colors", value: "dms" },
-                        { label: "Neon", value: "neon" },
-                        { label: "Umbrella (red neon)", value: "umbrella" },
-                        { label: "Dark neutral", value: "dark" },
-                        { label: "Light", value: "light" }
+                        { label: I18n.t(root.uiLanguage, "settings.theme.dms"), value: "dms" },
+                        { label: I18n.t(root.uiLanguage, "settings.theme.neon"), value: "neon" },
+                        { label: I18n.t(root.uiLanguage, "settings.theme.umbrella"), value: "umbrella" },
+                        { label: I18n.t(root.uiLanguage, "settings.theme.dark"), value: "dark" },
+                        { label: I18n.t(root.uiLanguage, "settings.theme.light"), value: "light" }
                     ]
                 }
 
                 SavedSlider {
                     settingKey: "uiScale"
-                    label: "Window Scale"
-                    description: "Zooms the whole chat window: text, buttons, corners and spacing. Message Text Size is applied on top of it."
+                    label: I18n.t(root.uiLanguage, "settings.scale.label")
+                    description: I18n.t(root.uiLanguage, "settings.scale.desc")
                     defaultValue: 100
                     minimum: 80
                     maximum: 125
@@ -1161,8 +1217,8 @@ PluginSettings {
                 ToggleSetting {
                     id: customToggle
                     settingKey: "themeCustomOn"
-                    label: "Custom colors"
-                    description: "Override the key colors of the chosen theme."
+                    label: I18n.t(root.uiLanguage, "settings.customColors.label")
+                    description: I18n.t(root.uiLanguage, "settings.customColors.desc")
                     defaultValue: false
                 }
 
@@ -1171,19 +1227,19 @@ PluginSettings {
                     spacing: Theme.spacingM
                     visible: customToggle.value
 
-                    ColorSetting { settingKey: "themeColor_accent"; label: "Accent"; description: "Buttons, your messages, selection."; defaultValue: AgentTheme.primary.toString() }
-                    ColorSetting { settingKey: "themeColor_panel"; label: "Panel & bubbles"; description: "Background of the input card, assistant bubbles and menus."; defaultValue: AgentTheme.surfaceContainer.toString() }
-                    ColorSetting { settingKey: "themeColor_text"; label: "Text"; defaultValue: AgentTheme.surfaceText.toString() }
-                    ColorSetting { settingKey: "themeColor_outline"; label: "Borders"; defaultValue: AgentTheme.outlineVariant.toString() }
-                    ColorSetting { settingKey: "themeColor_neonFrom"; label: "Neon: start"; description: "Left end of the gradient rim (themes with neon)."; defaultValue: AgentTheme.neon0.toString() }
-                    ColorSetting { settingKey: "themeColor_neonTo"; label: "Neon: end"; description: "Right end of the gradient rim."; defaultValue: AgentTheme.neon3.toString() }
+                    ColorSetting { settingKey: "themeColor_accent"; label: I18n.t(root.uiLanguage, "settings.color.accent"); description: I18n.t(root.uiLanguage, "settings.color.accent.desc"); defaultValue: AgentTheme.primary.toString() }
+                    ColorSetting { settingKey: "themeColor_panel"; label: I18n.t(root.uiLanguage, "settings.color.panel"); description: I18n.t(root.uiLanguage, "settings.color.panel.desc"); defaultValue: AgentTheme.surfaceContainer.toString() }
+                    ColorSetting { settingKey: "themeColor_text"; label: I18n.t(root.uiLanguage, "settings.color.text"); defaultValue: AgentTheme.surfaceText.toString() }
+                    ColorSetting { settingKey: "themeColor_outline"; label: I18n.t(root.uiLanguage, "settings.color.outline"); defaultValue: AgentTheme.outlineVariant.toString() }
+                    ColorSetting { settingKey: "themeColor_neonFrom"; label: I18n.t(root.uiLanguage, "settings.color.neonFrom"); description: I18n.t(root.uiLanguage, "settings.color.neonFrom.desc"); defaultValue: AgentTheme.neon0.toString() }
+                    ColorSetting { settingKey: "themeColor_neonTo"; label: I18n.t(root.uiLanguage, "settings.color.neonTo"); description: I18n.t(root.uiLanguage, "settings.color.neonTo.desc"); defaultValue: AgentTheme.neon3.toString() }
                 }
 
                 ToggleSetting {
                     id: advancedToggle
                     settingKey: "themeAdvancedOn"
-                    label: "Advanced: edit every color"
-                    description: "For fine tuning. Each color below replaces one role of the theme; it wins over the key colors above."
+                    label: I18n.t(root.uiLanguage, "settings.advanced.label")
+                    description: I18n.t(root.uiLanguage, "settings.advanced.desc")
                     defaultValue: false
                 }
 
@@ -1194,28 +1250,28 @@ PluginSettings {
 
                     Repeater {
                         model: [
-                            { key: "primary", label: "Primary (accent, user bubble)" },
-                            { key: "primaryText", label: "Text on primary" },
-                            { key: "surface", label: "Tool step background" },
-                            { key: "surfaceContainer", label: "Assistant bubble, input card" },
-                            { key: "surfaceContainerHighest", label: "Menus and dialogs" },
-                            { key: "surfaceVariant", label: "Hover and secondary fills" },
-                            { key: "surfaceText", label: "Text" },
-                            { key: "surfaceVariantText", label: "Muted text and icons" },
-                            { key: "outlineVariant", label: "Borders" },
-                            { key: "hoverTint", label: "Hover highlight" },
-                            { key: "error", label: "Error (recording, error messages)" },
-                            { key: "danger", label: "Delete buttons and delete hovers" },
-                            { key: "warning", label: "Warning (tool steps)" },
-                            { key: "neon0", label: "Neon 1" },
-                            { key: "neon1", label: "Neon 2" },
-                            { key: "neon2", label: "Neon 3" },
-                            { key: "neon3", label: "Neon 4" }
+                            { key: "primary" },
+                            { key: "primaryText" },
+                            { key: "surface" },
+                            { key: "surfaceContainer" },
+                            { key: "surfaceContainerHighest" },
+                            { key: "surfaceVariant" },
+                            { key: "surfaceText" },
+                            { key: "surfaceVariantText" },
+                            { key: "outlineVariant" },
+                            { key: "hoverTint" },
+                            { key: "error" },
+                            { key: "danger" },
+                            { key: "warning" },
+                            { key: "neon0" },
+                            { key: "neon1" },
+                            { key: "neon2" },
+                            { key: "neon3" }
                         ]
                         delegate: ColorSetting {
                             required property var modelData
                             settingKey: "themeAdv_" + modelData.key
-                            label: modelData.label
+                            label: I18n.t(root.uiLanguage, "settings.role." + modelData.key)
                             defaultValue: AgentTheme[modelData.key].toString()
                         }
                     }
@@ -1237,7 +1293,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 StyledText {
-                    text: "Bar & Hotkey"
+                    text: I18n.t(root.uiLanguage, "settings.section.bar")
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Bold
                     color: Theme.surfaceText
@@ -1245,8 +1301,8 @@ PluginSettings {
 
                 SavedSlider {
                     settingKey: "bubbleFontSize"
-                    label: "Message Text Size"
-                    description: "Font size in the chat bubbles. Larger is easier to read at a glance."
+                    label: I18n.t(root.uiLanguage, "settings.textSize.label")
+                    description: I18n.t(root.uiLanguage, "settings.textSize.desc")
                     defaultValue: 13
                     minimum: 11
                     maximum: 22
@@ -1255,8 +1311,8 @@ PluginSettings {
 
                 SavedSlider {
                     settingKey: "panelHeightPercent"
-                    label: "Chat Height"
-                    description: "How much of the monitor's height the chat window takes."
+                    label: I18n.t(root.uiLanguage, "settings.chatHeight.label")
+                    description: I18n.t(root.uiLanguage, "settings.chatHeight.desc")
                     defaultValue: 75
                     minimum: 40
                     maximum: 95
@@ -1265,8 +1321,8 @@ PluginSettings {
 
                 SavedSlider {
                     settingKey: "backgroundOpacity"
-                    label: "Background Transparency"
-                    description: "Transparency of the chat window and message bubbles. Lower is more transparent; with Liquid Glass on it sets how dense the glass tint is."
+                    label: I18n.t(root.uiLanguage, "settings.transparency.label")
+                    description: I18n.t(root.uiLanguage, "settings.transparency.desc")
                     defaultValue: 100
                     minimum: 30
                     maximum: 100
@@ -1275,31 +1331,31 @@ PluginSettings {
 
                 ToggleSetting {
                     settingKey: "liquidGlass"
-                    label: "Liquid Glass"
-                    description: "Translucent glass bubbles with a highlighted edge and the background blurred behind each one. Needs Blur enabled in DMS; without it, and in the Light theme, the bubbles stay solid."
+                    label: I18n.t(root.uiLanguage, "settings.glass.label")
+                    description: I18n.t(root.uiLanguage, "settings.glass.desc")
                     defaultValue: false
                 }
 
                 ToggleSetting {
                     settingKey: "updateNotify"
-                    label: "Update notice"
-                    description: "Once per boot, check the plugin's repository and show a notification when a newer version exists. Nothing is installed; update in Settings → Plugins."
+                    label: I18n.t(root.uiLanguage, "settings.updateNotice.label")
+                    description: I18n.t(root.uiLanguage, "settings.updateNotice.desc")
                     defaultValue: false
                 }
 
                 StringSetting {
                     settingKey: "pillLabel"
-                    label: "Pill Label"
-                    description: "Text next to the icon in the bar"
+                    label: I18n.t(root.uiLanguage, "settings.pill.label")
+                    description: I18n.t(root.uiLanguage, "settings.pill.desc")
                     placeholder: "Jarvis"
                     defaultValue: "Jarvis"
                 }
 
                 StringSetting {
                     settingKey: "hotkey"
-                    label: "Chat Hotkey (niri)"
-                    description: "Toggles the chat on the focused monitor, e.g. Mod+Space or Mod+Shift+A. No hotkey by default; empty removes it. A set hotkey overrides an existing bind on the same key. Written to ~/.config/niri/dms-ai-agent.kdl"
-                    placeholder: "none; e.g. Mod+Space"
+                    label: I18n.t(root.uiLanguage, "settings.hotkey.label")
+                    description: I18n.t(root.uiLanguage, "settings.hotkey.desc")
+                    placeholder: I18n.t(root.uiLanguage, "settings.hotkey.placeholder")
                     defaultValue: ""
                 }
             }
@@ -1319,7 +1375,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 StyledText {
-                    text: "Voice Input"
+                    text: I18n.t(root.uiLanguage, "settings.section.voice")
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Bold
                     color: Theme.surfaceText
@@ -1327,46 +1383,46 @@ PluginSettings {
 
                 SavedSelection {
                     settingKey: "voiceModel"
-                    label: "Whisper Model"
-                    description: "Auto: large-v3-turbo with an NVIDIA GPU, small on CPU. Downloaded on first use."
+                    label: I18n.t(root.uiLanguage, "settings.whisper.label")
+                    description: I18n.t(root.uiLanguage, "settings.whisper.desc")
                     defaultValue: "auto"
                     options: [
-                        { label: "Auto", value: "auto" },
-                        { label: "large-v3-turbo (GPU)", value: "large-v3-turbo" },
-                        { label: "medium", value: "medium" },
-                        { label: "small", value: "small" },
-                        { label: "base (fastest)", value: "base" }
+                        { label: I18n.t(root.uiLanguage, "settings.whisper.auto"), value: "auto" },
+                        { label: I18n.t(root.uiLanguage, "settings.whisper.gpu"), value: "large-v3-turbo" },
+                        { label: I18n.t(root.uiLanguage, "settings.whisper.medium"), value: "medium" },
+                        { label: I18n.t(root.uiLanguage, "settings.whisper.small"), value: "small" },
+                        { label: I18n.t(root.uiLanguage, "settings.whisper.base"), value: "base" }
                     ]
                 }
 
                 StringSetting {
                     settingKey: "voiceLanguage"
-                    label: "Language"
-                    description: "auto, or a code such as en, ru, de. A fixed language is more accurate for short phrases."
+                    label: I18n.t(root.uiLanguage, "settings.language.label")
+                    description: I18n.t(root.uiLanguage, "settings.language.desc")
                     placeholder: "auto"
                     defaultValue: "auto"
                 }
 
                 SavedSelection {
                     settingKey: "voiceDevice"
-                    label: "Microphone"
-                    description: "Which microphone dictation records from. The stored value is the PipeWire node name, so it survives renaming the list."
+                    label: I18n.t(root.uiLanguage, "settings.mic.label")
+                    description: I18n.t(root.uiLanguage, "settings.mic.desc")
                     defaultValue: ""
                     options: micOptions
                 }
 
                 ToggleSetting {
                     settingKey: "voiceWarmup"
-                    label: "Warm up on open"
-                    description: "Load the speech model whenever the chat opens (about 900 MB of memory while it is open), so the first dictation is not clipped. Leave off if you do not dictate."
+                    label: I18n.t(root.uiLanguage, "settings.warmup.label")
+                    description: I18n.t(root.uiLanguage, "settings.warmup.desc")
                     defaultValue: false
                 }
 
                 StringSetting {
                     settingKey: "voiceVenv"
-                    label: "Whisper venv"
-                    description: "Python venv with faster-whisper (install.sh creates the default one)"
-                    placeholder: "~/.local/share/dms-ai-agent/whisper-venv"
+                    label: I18n.t(root.uiLanguage, "settings.venv.label")
+                    description: I18n.t(root.uiLanguage, "settings.venv.desc")
+                    placeholder: I18n.t(root.uiLanguage, "settings.venv.placeholder")
                     defaultValue: ""
                 }
             }

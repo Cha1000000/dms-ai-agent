@@ -271,10 +271,10 @@ same without any markup. Your own messages get a single button.
 
 ### Language
 
-Setting **Language** to a code translates the chat interface into it as well, not just
-speech recognition — on `auto` the interface follows your locale. English and Russian ship with
-the plugin; another language is a table in `i18n.js` and nothing else. The settings page itself is
-English (its labels come from DMS widgets, the plugin's own strings there are English too).
+Setting **Language** to a code translates the interface into it as well, not just
+speech recognition — on `auto` the interface follows your locale. English and Russian
+ship with the plugin (chat **and** settings page); another language is a table in
+`i18n.js` and nothing else.
 
 ### History, clearing and switching providers
 
@@ -358,6 +358,10 @@ the chat panel stays in memory with the QML it was built from.
 - **Combo and Tokenator presets are filtered out** of every model catalog, including the ones that
   arrive namespaced from a gateway (`9router/claude-cowork-combo`, `tokenator/...`). A preset
   renamed beyond recognition cannot be detected, so the rule is by the preset's own name.
+- **The cc9 wrapper may not fall back to the Tokenator for Jarvis.** The plugin launches it with
+  `CC9_NO_FALLBACK=1`: if the 9Router gateway is down at launch, the run fails with an error
+  instead of silently switching to the Tokenator. The wrapper honours this flag (a two-line check
+  before its own fallback); without it the old behaviour is unchanged.
 - **Sessions stay out of your home directory.** The default working folder is
   `~/.local/state/dms-agent`, separate from sessions you start in `~` — and each provider and
   folder keeps its own set besides.

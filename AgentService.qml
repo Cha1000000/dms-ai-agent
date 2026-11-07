@@ -193,18 +193,21 @@ Singleton {
     readonly property string agentStateDir: (Quickshell.env("XDG_STATE_HOME") || (homeDir + "/.local/state")) + "/dms-agent"
     readonly property string providerRegistryPath: Quickshell.env("PROVIDER_REGISTRY")
         || (agentStateDir + "/providers.json")
-    property string _registryStamp: ""
-    Timer {
-        interval: 2000
-        running: true
-        repeat: true
-        onTriggered: root.runQuietExit("stat -Lc '%d:%i:%s:%Y:%y:%z' -- " + root.shellQuote(root.providerRegistryPath) + " 2>/dev/null || printf missing", function(output) {
-            var stamp = String(output).trim();
-            // The first tick also loads: a change landing between the startup
-            // load and this tick would otherwise wait for the NEXT change.
-            if (root._registryStamp === "" || stamp !== root._registryStamp) root.loadProviderRegistry();
-            root._registryStamp = stamp;
-        })
+    // The registry is watched, not polled: registry.py replaces the file
+    // atomically (rename), and a 2 s `stat` through a login shell for the
+    // whole shell lifetime was a process every two seconds for nothing.
+    // FileView reports writes, atomic replaces, deletion and the file
+    // appearing later; reload() then produces the new text.
+    FileView {
+        id: providerRegistryView
+        path: root.providerRegistryPath
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.loadProviderRegistry()
+        // A missing file is an empty store, not a failure: the built-in
+        // providers work. When it appears, fileChanged fires and the registry
+        // loads on the spot.
+        onLoadFailed: root.loadProviderRegistry()
     }
     // Bridge entry points for registry providers: the provider's own command
     // is the bridge's argument (AgentService.qml, _launchClaude).
@@ -950,7 +953,8 @@ Singleton {
         // files older than some age. The plan requires cleanup "at the next
         // start after a crash".
         runQuietExit("rm -rf " + shellQuote(contextDir), null);
-        loadProviderRegistry(); loadHistory(); refreshModels();
+        // The registry's initial load comes from its FileView (onLoaded).
+        loadHistory(); refreshModels();
     }
 
     // --- Process runner ---
