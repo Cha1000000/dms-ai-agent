@@ -17,7 +17,7 @@ def run_script(body):
         functions.append(source[start:end])
     harness = """
 const I18n = {t: (_, key) => key}, root = {uiLanguage: 'en'};
-const Providers = {all: () => ['claude', 'cvc', 'cc9', 'qoder', 'kimi'].map(id => ({id}))};
+const Providers = {all: () => ['claude', 'cvc', 'qoder', 'kimi'].map(id => ({id}))};
 let providers = {}, registryLoaded = true, loadFailed = false, formError = '';
 let fieldError = '', fieldErrorField = '';
 let pendingId = '', pendingEntry = null, pendingKey = '', pendingCommandText = '', pendingUrlValue = '', pendingNeedsUrl = false;

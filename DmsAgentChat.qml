@@ -935,7 +935,7 @@ Item {
         id: modelDropdown; visible: false
         anchors.bottom: inputCard.top; anchors.bottomMargin: chatRoot.gap
         anchors.left: inputCard.left; anchors.leftMargin: Theme.spacingS
-        // A provider with a long catalog (CVC, 9Router) has more models than fit
+        // A provider with a long catalog (CVC, a gateway) has more models than fit
         // on the screen, so the list is scrollable and its height is capped by
         // the space above the input card. The height comes from the number of
         // models, not from the list's contentHeight: the list fills the

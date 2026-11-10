@@ -60,19 +60,20 @@ if (fn === "kimi_caps") {
         requiresKey: !!p.requiresKey,
         stdinUserFormat: p.stdinUserFormat ? p.stdinUserFormat("hi") : null,
     };
-} else if (fn === "cc9_caps") {
-    out = {
-        id: PROVIDERS.cc9.id,
-        title: PROVIDERS.cc9.title,
-        caps: PROVIDERS.cc9.caps,
-        canUseTool: PROVIDERS.cc9.canUseTool,
-        aliasModels: PROVIDERS.cc9.aliasModels,
-        requiresKey: !!PROVIDERS.cc9.requiresKey,
-    };
-} else if (fn === "cc9_buildCommand") {
-    out = PROVIDERS.cc9.buildCommand(Object.assign({
+} else if (fn === "registry_buildCommand") {
+    if (arg.data) setRegistry(arg.data);
+    var d = byId(arg.id);
+    out = d ? d.buildCommand(Object.assign({
         q: (s) => "'" + String(s).replace(/'/g, "'\\''") + "'",
-    }, arg));
+    }, arg.opts || {})) : null;
+} else if (fn === "registry_descriptor") {
+    if (arg.data) setRegistry(arg.data);
+    var rd = byId(arg.id);
+    out = rd ? {
+        id: rd.id, title: rd.title, adapter: rd.adapter, bridge: !!rd.bridge,
+        caps: rd.caps, canUseTool: rd.canUseTool, aliasModels: rd.aliasModels,
+        requiresKey: !!rd.requiresKey,
+    } : null;
 } else if (fn === "chipLabel") {
     out = chipLabel(arg.label, arg.max);
 } else if (fn === "cancelMessage") {

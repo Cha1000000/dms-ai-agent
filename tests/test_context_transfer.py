@@ -181,7 +181,7 @@ rearmCarriedContext();
 messages = [{role:'user', content:'new'}]; rearmCarriedContext();
 assert.deepStrictEqual(_carriedContext.map(x => x.content), ['old','reply','new']);
 rearmCarriedContext(); assert.equal(_carriedContext.length, 3);
-global.providerOrClaude = {adapter:'openai', stdinUserFormat: x => x};
+global.providerOrClaude = {bridge:true, adapter:'openai', stdinUserFormat: x => x};
 global.contextDir = '/tmp/test'; global._requestId = 5; global.statusText = '';
 global.finished = ''; global.finishResponse = x => finished = x;
 global.launched = []; global._launchNow = x => launched.push(x);

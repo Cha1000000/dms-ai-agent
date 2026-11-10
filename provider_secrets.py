@@ -10,13 +10,10 @@ claude CLI pointed at their gateway).
 """
 import json
 import os
-import shutil
 import sys
 import urllib.request
 
 CVC_BASE_URL = "https://ru.cheapvibecode.ru"
-# The local gateway of the cc9 wrapper (see ~/.local/bin/cc9).
-CC9_ROUTER_URL = "http://127.0.0.1:20128"
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import registry  # noqa: E402
@@ -98,36 +95,12 @@ def test_cvc_key():
         return "fail: %s" % e
 
 
-def cc9_ready():
-    """Whether the cc9 provider may run: the wrapper is on PATH AND the 9Router
-    gateway answers. The wrapper's own fallback launches Tokenator when the
-    gateway is down — forbidden in Jarvis ("Никаких Комбо и моделей Токенатора
-    в Джарвисе быть не должно") — so a down gateway is a hard "no": the launch
-    is blocked here instead of being left to the wrapper's discretion. There is
-    an unavoidable race (the gateway can die between this check and exec); the
-    check closes the common case, the wrapper's fallback can still fire after
-    an in-flight outage."""
-    if not shutil.which("cc9"):
-        return False
-    try:
-        import urllib.request
-        req = urllib.request.Request(CC9_ROUTER_URL + "/api/version")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return 200 <= resp.status < 300
-    except Exception:
-        # Gateway down: run would fall through to the wrapper's Tokenator
-        # fallback — refuse rather than launch it.
-        return False
-
-
 def is_signed_in(provider):
     """Whether the provider can run at all: the key store has a key, or the
     CLI has a login. A probe that cannot tell counts as signed in — only a
     definite "no credentials" stops the chat and points at the login command."""
     if provider == "cvc":
         return bool(get_api_key("cvc"))
-    if provider == "cc9":
-        return cc9_ready()
     if provider == "kimi":
         import glob
         return bool(glob.glob(os.path.expanduser("~/.kimi-code/credentials/*.json")))

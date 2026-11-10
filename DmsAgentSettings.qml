@@ -90,7 +90,7 @@ PluginSettings {
             list.push({ label: p.title, value: p.id });
         for (const id of Object.keys(externalProviders)) {
             const p = externalProviders[id];
-            if (p && ["acp", "codex", "openai"].indexOf(p.adapter) >= 0)
+            if (p && ["acp", "codex", "claude-cli", "openai"].indexOf(p.adapter) >= 0)
                 list.push({ label: p.title || id, value: id });
         }
         return list;
@@ -519,7 +519,7 @@ PluginSettings {
             if (!entry || typeof entry !== "object" || Array.isArray(entry)) return "settings.reg.badEntry";
             if (Object.keys(entry).some(k => ["adapter", "title", "command", "baseUrl"].indexOf(k) < 0))
                 return "settings.reg.badFields";
-            if (["acp", "codex", "openai"].indexOf(entry.adapter) < 0) return "settings.reg.badAdapter";
+            if (["acp", "codex", "claude-cli", "openai"].indexOf(entry.adapter) < 0) return "settings.reg.badAdapter";
             if (entry.title !== undefined && typeof entry.title !== "string") return "settings.reg.badEntry";
             if (entry.adapter === "openai") {
                 if (entry.command !== undefined || typeof entry.baseUrl !== "string") return "settings.reg.badEntry";
@@ -696,11 +696,14 @@ PluginSettings {
                     width: 160
                     text: ""
                     currentValue: regProviders.formAdapter === "acp" ? "ACP"
-                                  : regProviders.formAdapter === "codex" ? "Codex" : "OpenAI gateway"
-                    options: ["ACP", "Codex", "OpenAI gateway"]
+                                  : regProviders.formAdapter === "codex" ? "Codex"
+                                  : regProviders.formAdapter === "claude-cli" ? "Claude CLI"
+                                  : "OpenAI gateway"
+                    options: ["ACP", "Codex", "Claude CLI", "OpenAI gateway"]
                     onValueChanged: newValue => {
                         regProviders.formAdapter = newValue === "ACP" ? "acp"
-                            : newValue === "Codex" ? "codex" : "openai";
+                            : newValue === "Codex" ? "codex"
+                            : newValue === "Claude CLI" ? "claude-cli" : "openai";
                         regProviders.clearFieldError();
                     }
                 }

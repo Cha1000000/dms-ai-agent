@@ -6,7 +6,7 @@ there — then --model would send an id the CLI rejects and every run fails.
 
 Contract: an id survives when the new catalog lists it (by id or by the model
 it resolves to). A bare alias ("opus") survives only while the catalog still
-offers the aliases: under a harness aggregate (cc9 + 9Router) there are none,
+offers the aliases: under a harness aggregate there are none,
 and there "opus" means the Combo, which must not be in Jarvis.
 """
 import json

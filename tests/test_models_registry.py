@@ -164,3 +164,26 @@ def test_combo_and_tokenator_are_filtered_inside_a_namespace():
 def test_unknown_registry_provider_still_rejected(registry_state, capsys):
     with pytest.raises(RuntimeError):
         models.fetch_models_for("brainfuck")
+
+
+def test_claude_cli_provider_asks_its_own_command(registry_state, monkeypatch):
+    """A CLI that speaks the claude protocol is its own catalog source: the
+    registry command is executed as given (env prefix included), and the
+    forbidden presets are filtered like in every other catalog."""
+    prov_registry.set_provider("wrap", {"adapter": "claude-cli",
+                                        "command": ["env", "X=1", "wrap-cli"]})
+    monkeypatch.setattr(models, "_registered", prov_registry.load().get("providers", {}))
+    monkeypatch.setattr(models, "_registered_adapters",
+                        {p: e.get("adapter") for p, e in models._registered.items()})
+    seen = {}
+
+    def fake(argv):
+        seen["argv"] = argv
+        return [{"value": "m1", "displayName": "M1"},
+                {"value": "wrap-group:vendor"},
+                {"value": "9router/tk-free"}]
+
+    monkeypatch.setattr(models, "ask_cli_argv", fake)
+    out = models.fetch_models_for("wrap")
+    assert seen["argv"] == ["env", "X=1", "wrap-cli"]
+    assert [m["id"] for m in out] == ["m1"]

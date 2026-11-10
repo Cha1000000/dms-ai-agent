@@ -225,7 +225,7 @@ def test_registry_backed_list_has_no_twenty_session_limit(tmp_path):
     assert len(json.loads(out.stdout)) == 25
 
 
-@pytest.mark.parametrize("provider", ["claude", "cvc", "cc9"])
+@pytest.mark.parametrize("provider", ["claude", "cvc"])
 def test_all_dirs_includes_shared_registered_directories_without_limit(tmp_path, provider):
     home = tmp_path / "home"
     here = tmp_path / "here"
@@ -273,9 +273,9 @@ def test_restore_keeps_all_messages_and_all_text_blocks(tmp_path):
 
 
 def test_restore_a_gateway_model_id_not_only_a_claude_one(tmp_path):
-    """cc9 runs "cvc/…"/"kimi/…" ids, CheapVibeCode runs non-Claude names. The
-    old `claude-` prefix filter made per-session model restore silently dead
-    for both providers."""
+    """A gateway runs "cvc/…"/"kimi/…" ids, CheapVibeCode runs non-Claude
+    names. The old `claude-` prefix filter made per-session model restore
+    silently dead for both."""
     home = tmp_path / "home"
     cwd = tmp_path / "work"
     cwd.mkdir()
@@ -284,7 +284,7 @@ def test_restore_a_gateway_model_id_not_only_a_claude_one(tmp_path):
         '{"type":"assistant","requestedModel":"cvc/deepseek-v4.1-flash","effort":"high",'
         '"message":{"content":[{"type":"text","text":"hello"}]}}',
     ])
-    out = run_history(home, cwd, "--provider", "cc9", "restore", "gw-session")
+    out = run_history(home, cwd, "--provider", "cvc", "restore", "gw-session")
     data = json.loads(out.stdout)
     assert data["model"] == "cvc/deepseek-v4.1-flash"
     assert data["effort"] == "high"

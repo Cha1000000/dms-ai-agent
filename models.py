@@ -34,7 +34,7 @@ elif "--provider" in argv:
     del argv[i:i + 2]
 # The known providers. An unknown one is rejected: answering with the claude
 # catalog would be a wrong answer with a confident face.
-KNOWN_PROVIDERS = ("claude", "cvc", "cc9", "qoder", "kimi")
+KNOWN_PROVIDERS = ("claude", "cvc", "qoder", "kimi")
 # Registered providers (providers.json): their catalog source is their adapter.
 import registry as _prov_registry  # noqa: E402
 
@@ -55,17 +55,15 @@ CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.
 # "default" just duplicates one of the entries; Fable is left out on purpose.
 SKIP_IDS = {"default"}
 SKIP_PREFIXES = ("fable", "claude-fable")
-# When the claude CLI is a harness wrapper (cc9 + 9Router), its catalog is a
-# gateway aggregate: section headers ("cc9-group:*"), the Combo presets and
-# the Tokenator namespace are not models and must not reach the picker
-# ("Никаких Комбо и моделей Токенатора в Джарвисе быть не должно"). Every
-# other id of the aggregate IS a model of the harness the user runs — the one
-# their --model takes — so they stay. Caught live 2026-11-03: the filter used
-# to drop every id with a slash, and the picker was left with three aliases
-# while the harness offered 181 models.
+# A harness wrapper in front of the claude CLI reports a gateway aggregate
+# instead of the native catalog: section headers ("<harness>-group:*"), the
+# Combo presets and the Tokenator namespace are not models and must not reach
+# the picker ("Никаких Комбо и моделей Токенатора в Джарвисе быть не должно").
+# Every other id of the aggregate IS a model of the harness the user runs —
+# the one their --model takes — so they stay.
 COMBO_IDS = {"claude-cowork-combo", "free-models", "tk-free", "tokenator-paid"}
-GROUP_PREFIX = "cc9-group:"
-# tk/ is the Tokenator namespace of the 9Router.
+GROUP_MARKER = "-group:"
+# tk/ is the Tokenator namespace of a router gateway.
 TOKENATOR_PREFIX = "tk/"
 # The same presets inside a gateway namespace: "9router/tk-free",
 # "9router/tokenator-paid". The whole tk/ namespace is the Tokenator's, and
@@ -78,7 +76,7 @@ def claude_model_id(mid):
         return False
     if mid in SKIP_IDS or mid in COMBO_IDS:
         return False
-    if mid.startswith(SKIP_PREFIXES) or mid.startswith(GROUP_PREFIX):
+    if mid.startswith(SKIP_PREFIXES) or GROUP_MARKER in mid:
         return False
     if mid.startswith(TOKENATOR_PREFIX):
         return False
@@ -112,7 +110,7 @@ CLAUDE_ALIASES = [
 def with_claude_aliases(models):
     """Add the bare "opus"/"sonnet"/"haiku" aliases to a native catalog.
 
-    A harness aggregate (cc9 + 9Router) gets none: there the aliases are its
+    A harness aggregate from a wrapper gets none: there the aliases are its
     own presets, and they resolve to the Combo — which must not be in Jarvis.
     """
     if any("/" in m["id"] for m in models):
@@ -128,14 +126,14 @@ CVC_EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 QODER_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultracode"]
 
 
-def ask_cli(cli="claude"):
+def ask_cli_argv(argv):
     request = json.dumps({"type": "control_request", "request_id": "models",
                           "request": {"subtype": "initialize"}})
     # No hooks, no MCP servers, no session file: only the model list is needed.
     out = subprocess.run(
-        [cli, "-p", "--no-session-persistence", "--strict-mcp-config",
-         "--settings", '{"disableAllHooks":true}',
-         "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],
+        list(argv) + ["-p", "--no-session-persistence", "--strict-mcp-config",
+                      "--settings", '{"disableAllHooks":true}',
+                      "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],
         input=request + "\n", capture_output=True, text=True, timeout=60,
     ).stdout
     for line in out.splitlines():
@@ -146,6 +144,10 @@ def ask_cli(cli="claude"):
         if msg.get("type") == "control_response":
             return msg["response"]["response"]["models"]
     raise RuntimeError("no control_response")
+
+
+def ask_cli(cli="claude"):
+    return ask_cli_argv([cli])
 
 
 def map_cvc_models(payload):
@@ -490,24 +492,30 @@ def fetch_models_for(provider):
         if isinstance(command, str):
             command = command.split()
         return ask_acp_models(command)
+    if adapter == "claude-cli":
+        # A CLI that speaks the claude protocol: ask it for its own catalog.
+        # The bare aliases are not added — a wrapper routes them through its
+        # own presets, and those must not be in the picker.
+        entry = _registered.get(provider) or {}
+        command = entry.get("command") or []
+        if isinstance(command, str):
+            command = command.split()
+        if not command:
+            raise RuntimeError("provider %r: claude-cli without a command" % (provider,))
+        return [
+            {"id": m["value"], "label": m.get("displayName") or m["value"],
+             "resolved": m.get("resolvedModel", m["value"]),
+             "desc": m.get("description", ""),
+             "efforts": m.get("supportedEffortLevels") or []}
+            for m in ask_cli_argv(command)
+            if claude_model_id(m["value"])
+        ]
     if provider not in KNOWN_PROVIDERS:
         # A registered provider whose adapter has no catalog source here (a
         # file from a newer version, or a hand-edited entry). Answering with
         # the Claude catalog would be a wrong answer with a confident face.
         raise RuntimeError("provider %r: adapter %r has no model source"
                            % (provider, adapter))
-    if provider == "cc9":
-        # The wrapper's catalog — the gateway's aggregate, not the native
-        # Claude one. The bare aliases are not added: in that catalog they are
-        # the wrapper's own presets and resolve to the Combo.
-        return [
-            {"id": m["value"], "label": m.get("displayName") or m["value"],
-             "resolved": m.get("resolvedModel", m["value"]),
-             "desc": m.get("description", ""),
-             "efforts": m.get("supportedEffortLevels") or []}
-            for m in ask_cli("cc9")
-            if claude_model_id(m["value"])
-        ]
     return with_claude_aliases([
         {"id": m["value"], "label": m.get("displayName") or m["value"],
          "resolved": m.get("resolvedModel", m["value"]), "desc": m.get("description", ""),

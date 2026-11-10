@@ -194,11 +194,19 @@ def test_rejects_non_dict_entry(store):
 def test_rejects_builtin_provider_ids(store):
     """A registry entry must never shadow a built-in provider (chat, catalogs
     and history are keyed on the id)."""
-    for pid in ("claude", "cvc", "cc9", "qoder", "kimi"):
+    for pid in ("claude", "cvc", "qoder", "kimi"):
         with pytest.raises(reg.ValidationError):
             reg.set_provider(pid, {"adapter": "openai", "baseUrl": "https://x.example/v1"})
         with pytest.raises(reg.ValidationError):
             reg.set_provider(pid, {"adapter": "acp", "command": ["/bin/true"]})
+
+
+def test_accepts_a_claude_protocol_cli(store):
+    """A CLI that speaks the Claude Code stream-json protocol is a first-class
+    registry provider: the command may carry its own env prefix."""
+    reg.set_provider("wrap", {"adapter": "claude-cli",
+                              "command": ["env", "X=1", "wrap-cli"]})
+    assert reg.load()["providers"]["wrap"]["adapter"] == "claude-cli"
 
 
 def test_rejects_a_key_or_unknown_field_in_a_provider_entry(store):

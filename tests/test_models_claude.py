@@ -1,7 +1,7 @@
 """TDD: the Claude model list, and the filter over a harness wrapper's catalog.
 
 The claude provider takes its list from the CLI's initialize response. When
-`claude` on PATH is a wrapper (cc9 + 9Router), that catalog is a gateway
+`claude` on PATH is a harness wrapper, that catalog is a gateway
 aggregate: the group headers are sections, not models, and the Combo presets
 and the Tokenator namespace must not reach the picker. Contract: "Никаких
 Комбо и моделей Токенатора в Джарвисе быть не должно", while every real
@@ -26,8 +26,8 @@ def test_combo_presets_are_not_models():
 
 
 def test_group_headers_are_not_models():
-    assert not models.claude_model_id("cc9-group:anthropic")
-    assert not models.claude_model_id("cc9-group:cvc")
+    assert not models.claude_model_id("wrap-group:anthropic")
+    assert not models.claude_model_id("wrap-group:cvc")
 
 
 def test_tokenator_models_are_not_in_the_picker():
@@ -100,7 +100,7 @@ def test_fetch_keeps_the_real_models_and_drops_the_rest(tmp_path):
     catalog = [
         {"value": "claude-opus-5-5", "displayName": "Opus 5.5",
          "supportedEffortLevels": ["low", "high"]},
-        {"value": "cc9-group:anthropic", "displayName": "Anthropic"},
+        {"value": "wrap-group:anthropic", "displayName": "Anthropic"},
         {"value": "claude-cowork-combo", "displayName": "Комбо"},
         {"value": "tk/claude-sonnet-5-5", "displayName": "Sonnet (Tokenator)"},
         {"value": "cvc/claude-sonnet-5-5", "displayName": "Sonnet via gateway"},
@@ -119,12 +119,12 @@ def test_the_harness_aggregate_reaches_the_picker(tmp_path):
     """
     catalog = [
         {"value": "default", "displayName": "Default (recommended)"},
-        {"value": "cc9-group:combo", "displayName": "── Комбо (фолбэк) ──"},
+        {"value": "wrap-group:combo", "displayName": "── Комбо (фолбэк) ──"},
         {"value": "claude-cowork-combo", "displayName": "Комбо (по умолчанию)"},
         {"value": "free-models", "displayName": "Все бесплатные"},
         {"value": "tk-free", "displayName": "Только бесплатные Tokenator"},
         {"value": "tokenator-paid", "displayName": "💰 Комбо платных Tokenator"},
-        {"value": "cc9-group:cvc", "displayName": "── CheapVibeCode (cvc) ──"},
+        {"value": "wrap-group:cvc", "displayName": "── CheapVibeCode (cvc) ──"},
         {"value": "cvc/claude-opus-5-5", "displayName": "Claude Opus 5.5"},
         {"value": "tk/claude-opus-5-5", "displayName": "Opus (Tokenator)"},
         {"value": "kc/google/gemini-2.5-flash", "displayName": "Gemini 2.5 Flash"},

@@ -109,7 +109,6 @@ def test_cancel_speaks_each_provider_protocol():
 
 def test_sign_in_hints_name_the_adapter():
     assert run("hintKey", {"id": "cvc"}) == "loginHint.cvc"
-    assert run("hintKey", {"id": "cc9"}) == "loginHint.cc9"
     data = _registry({
         "gw": {"adapter": "openai", "baseUrl": "https://x/v1"},
         "cx": {"adapter": "codex", "command": ["codex", "exec", "--json"]},
@@ -118,13 +117,42 @@ def test_sign_in_hints_name_the_adapter():
     assert run("hintKey", {"data": data, "id": "gw"}) == "loginHint.gateway"
     assert run("hintKey", {"data": data, "id": "cx"}) == "loginHint.codex"
     assert run("hintKey", {"data": data, "id": "acp"}) == "loginHint.generic"
+    cli = _registry({"wrap": {"adapter": "claude-cli", "command": ["env", "X=1", "wrap"]}})
+    assert run("hintKey", {"data": cli, "id": "wrap"}) == "loginHint.generic"
     assert run("hintKey", {"id": "no-such-provider"}) == "loginHint.generic"
 
 
 def test_live_checks_are_not_cached_by_the_chat():
-    # cc9 readiness is a running gateway, cvc's is a stored key that can be
-    # deleted mid-session: neither may be cached for the shell's lifetime.
-    assert run("descriptor_flag", {"id": "cc9", "flag": "liveSignIn"}) is True
+    # A live service check (cvc's gateway reachability, a wrapper's own
+    # readiness) is not a login and must not be cached for the shell's
+    # lifetime.
     assert run("descriptor_flag", {"id": "cvc", "flag": "liveSignIn"}) is True
     for pid in ("claude", "qoder", "kimi"):
         assert run("descriptor_flag", {"id": pid, "flag": "liveSignIn"}) is False
+
+
+def test_claude_cli_descriptor_runs_its_own_command():
+    """A CLI that speaks the claude stream-json protocol needs no bridge: the
+    entry's argv is the program (an `env VAR=…` prefix included), and the
+    descriptor must not be marked as a bridge — the chat sends a config line
+    only to bridges."""
+    data = _registry({"wrap": {"adapter": "claude-cli", "title": "Wrapper",
+                               "command": ["env", "NO_FALLBACK=1", "wrap-cli"]}})
+    d = run("registry_descriptor", {"data": data, "id": "wrap"})
+    assert d["adapter"] == "claude-cli"
+    assert d["bridge"] is False
+    assert d["caps"]["stdinEnabled"] is True
+    assert d["caps"]["askFirst"] is False
+    cmd = run("registry_buildCommand", {"data": data, "id": "wrap",
+                                        "opts": {"model": "m", "systemPrompt": "sp"}})
+    assert "env" in cmd and "NO_FALLBACK=1" in cmd and "wrap-cli" in cmd
+    assert "--input-format stream-json" in cmd
+
+    bridge = run("registry_descriptor", {"data": _registry(
+        {"gw": {"adapter": "openai", "baseUrl": "https://x/v1"}}), "id": "gw"})
+    assert bridge["bridge"] is True
+
+
+def test_claude_cli_without_a_command_is_skipped():
+    data = _registry({"broken": {"adapter": "claude-cli"}})
+    assert run("registry_descriptor", {"data": data, "id": "broken"}) is None

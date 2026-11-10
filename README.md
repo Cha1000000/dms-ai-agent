@@ -11,7 +11,7 @@
 
 **DMS AI Agent** is a desktop assistant for [DankMaterialShell](https://danklinux.com) powered by
 [Claude Code](https://docs.claude.com/en/docs/claude-code) — or, if you prefer another agent CLI,
-by CheapVibeCode, 9Router, Qoder or Kimi Code, or by any agent you add yourself through the provider
+by CheapVibeCode, Qoder or Kimi Code, or by any agent you add yourself through the provider
 registry: an ACP agent such as Gemini or OpenCode, Codex, or an OpenAI-compatible gateway (see
 [Providers](#providers)). Click the pill in your bar (or hit a hotkey), type or say what you need —
 "open Telegram on workspace 2", "how much disk space is left", "find the PDFs I downloaded today" —
@@ -38,7 +38,7 @@ original has not changed since April 2026, and nothing is merged from it automat
 | Chat position | always bottom-centre | left edge, centre or right edge, remembered per monitor |
 | Look | grey border | neon gradient rim, custom icon and label |
 | Sessions | mixed with your other Claude Code sessions in `$HOME` | kept in their own project dir |
-| Agent | Claude Code only | Claude Code, CheapVibeCode, 9Router, Qoder or Kimi Code, plus any ACP agent, Codex or OpenAI-compatible gateway you add yourself |
+| Agent | Claude Code only | Claude Code, CheapVibeCode, Qoder or Kimi Code, plus any ACP agent, Codex, a Claude-compatible CLI or an OpenAI-compatible gateway you add yourself |
 | Staying current | press Update when you remember to | optional notification when a newer version exists |
 
 <p align="center">
@@ -52,7 +52,7 @@ original has not changed since April 2026, and nothing is merged from it automat
   compositors; the hotkey helper and "open on the focused monitor" need niri)
 - At least one agent: a CLI you are signed in to — [Claude Code](https://docs.claude.com/en/docs/claude-code)
   (default; **your existing Claude Code login is what pays for this** — a Claude subscription if
-  that is how you signed in), or CheapVibeCode, 9Router, Qoder or Kimi Code — or a provider you add
+  that is how you signed in), or CheapVibeCode, Qoder or Kimi Code — or a provider you add
   yourself, such as an ACP agent or a gateway with a key (see [Providers](#providers)). Logins
   belong to the CLI; keys for CheapVibeCode and for a custom OpenAI gateway are stored by the
   plugin itself in `~/.local/state/dms-agent/providers.json` (0600) and never in the synced plugin
@@ -134,7 +134,6 @@ The model list, effort levels and history all follow the provider you picked.
 |---|---|---|
 | **Claude Code** (default) | your Claude Code login (run `claude` once) | the full experience: Ask first dialogs, sessions and cost in the status line |
 | **CheapVibeCode** | API key, entered once in the plugin settings | the stock Claude Code CLI pointed at their gateway; their own model catalog; Ask first is off — the handshake stalls on that gateway |
-| **9Router (cc9)** | the `cc9` wrapper, already signed in | the stock CLI run through the wrapper, so the catalog is the gateway's aggregate rather than the five native Claude models |
 | **Qoder** | the `qodercli` login | always runs unattended (their CLI has no permission handshake in print mode); models from `--list-models` |
 | **Kimi Code** | the `kimi` login (`~/.kimi-code`) | always runs unattended; models and effort levels from `~/.kimi-code/config.toml` (read-only — the CLI owns that file) |
 
@@ -358,10 +357,10 @@ the chat panel stays in memory with the QML it was built from.
 - **Combo and Tokenator presets are filtered out** of every model catalog, including the ones that
   arrive namespaced from a gateway (`9router/claude-cowork-combo`, `tokenator/...`). A preset
   renamed beyond recognition cannot be detected, so the rule is by the preset's own name.
-- **The cc9 wrapper may not fall back to the Tokenator for Jarvis.** The plugin launches it with
-  `CC9_NO_FALLBACK=1`: if the 9Router gateway is down at launch, the run fails with an error
-  instead of silently switching to the Tokenator. The wrapper honours this flag (a two-line check
-  before its own fallback); without it the old behaviour is unchanged.
+- **Any CLI that speaks the Claude Code stream-json protocol can be added as a provider.** Pick
+  the **Claude CLI** adapter in the registry form and give the command; it runs as-is (an
+  `env VAR=...` prefix included), and its own model list is read over that protocol. The plugin
+  adds no environment overrides of its own.
 - **Sessions stay out of your home directory.** The default working folder is
   `~/.local/state/dms-agent`, separate from sessions you start in `~` — and each provider and
   folder keeps its own set besides.

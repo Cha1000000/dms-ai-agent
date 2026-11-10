@@ -27,12 +27,14 @@ import tempfile
 ID_RE = re.compile(r"^[a-z0-9-]+$")
 # Only adapters with a real bridge/descriptor. "claude" was accepted here in an
 # early iteration, but neither providers.js nor the settings can run such an
-# entry: it was accepted, stored and invisible in the chat.
-KNOWN_ADAPTERS = ("acp", "codex", "openai")
+# entry: it was accepted, stored and invisible in the chat. "claude-cli" is a
+# CLI that speaks the Claude Code stream-json protocol directly (no bridge):
+# the entry's command is executed as-is.
+KNOWN_ADAPTERS = ("acp", "codex", "claude-cli", "openai")
 # Ids of the built-in providers. A registry entry with one of these would
 # shadow the built-in descriptor (the chat, model catalogs and history are all
 # keyed on the id), so the store refuses them.
-BUILTIN_PROVIDER_IDS = ("claude", "cvc", "cc9", "qoder", "kimi")
+BUILTIN_PROVIDER_IDS = ("claude", "cvc", "qoder", "kimi")
 ALLOWED_FIELDS = ("adapter", "title", "command", "baseUrl")
 # The same rule the settings form applies: HTTPS, or plain HTTP for loopback.
 URL_RE = re.compile(

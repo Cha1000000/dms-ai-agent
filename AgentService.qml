@@ -1440,9 +1440,8 @@ Singleton {
         runQuietExit("python3 " + shellQuote(secretsScript) + " check " + shellQuote(providerId), function(output) {
             if (request !== _requestId) return;
             if (String(output).trim() === "set") {
-                // A live service check (cc9's gateway) is not a login: caching
-                // it would let the wrapper fall back to its Tokenator presets
-                // for the rest of the shell's life once the gateway goes down.
+                // A live service check is not a login: caching it would keep
+                // the answer "signed in" for the rest of the shell's life.
                 if (!providerOrClaude.liveSignIn) _signedIn[providerId] = true;
                 _launchChecked(prompt);
             } else {
@@ -1460,9 +1459,9 @@ Singleton {
         // Context transfer (step 4): a carried chat goes along as a context
         // file for the registry bridges (written 0600 before the launch), and
         // as text prepended to the prompt for every CLI that takes the query
-        // as an argument or on stdin — claude, CVC, cc9, Qoder and Kimi alike.
+        // as an argument or on stdin — claude, CVC, Qoder and Kimi alike.
         var carried = _carriedContext;
-        if (carried.length > 0 && providerOrClaude.adapter) {
+        if (carried.length > 0 && providerOrClaude.bridge) {
             statusText = tr("status.processing");
             var request = _requestId;
             var path = contextDir + "/ctx-" + Date.now() + "-" + request + "-" + Math.random().toString(36).slice(2) + ".jsonl";
@@ -1547,7 +1546,7 @@ Singleton {
             var input = "";
             // Registry bridges take a config line (model/effort/resumeId)
             // before the user message; the claude CLI gets these as flags.
-            if (providerOrClaude.adapter) {
+            if (providerOrClaude.bridge) {
                 var cfg = { type: "config" };
                 if (cliModel) cfg.model = cliModel;
                 if (activeEffort) cfg.effort = activeEffort;

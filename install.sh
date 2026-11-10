@@ -169,7 +169,7 @@ Next steps in DMS:
 
 Make sure the agent CLI you will use is logged in — for the default Claude Code
 that is: run 'claude' once in a terminal. Other providers (CheapVibeCode,
-9Router/cc9, Qoder, Kimi Code, or your own ACP/Codex/gateway entries) are
+Qoder, Kimi Code, or your own ACP/Codex/Claude-CLI/gateway entries) are
 switched in Plugin settings → Agent; each signs in on its own (their own CLI
 login or an API key).
 EOF

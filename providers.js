@@ -113,45 +113,6 @@ PROVIDERS.cvc = {
     // would keep launching the stock CLI without its gateway env.
     liveSignIn: true,
 };
-// 9Router (cc9) is the stock claude CLI run through the cc9 wrapper: the CLI
-// pointed at the local 9Router gateway, with its own config dir. It is a
-// separate provider because the gateway catalog is only visible when that
-// wrapper is used: DMS started from systemd inherits no cc9 environment, so
-// the stock CLI on PATH reports the five native Claude models instead of the
-// gateway's aggregate. The wrapper speaks the same protocol (checked live
-// 2026-11-03: the can_use_tool handshake and the --model ids both work), so
-// the only difference is the binary that is run and the catalog it reports.
-PROVIDERS.cc9 = {
-    id: "cc9",
-    title: "9Router (cc9)",
-    caps: {
-        askFirst: true,
-        cost: true,
-        stdinEnabled: true,
-        cancelViaStdin: true,
-        perSessionRestore: true
-    },
-
-    buildCommand: function (opts) {
-        // CC9_NO_FALLBACK: the wrapper switches to the Tokenator when its
-        // gateway is down. Jarvis must never run a Tokenator model, and the
-        // readiness check alone cannot close the gap between the check and
-        // the wrapper's own check — so the wrapper is told to fail instead.
-        return PROVIDERS.claude.buildCommand(Object.assign({}, opts,
-                       { cli: "cc9", envPrefix: "CC9_NO_FALLBACK=1" }));
-    },
-
-    stdinUserFormat: PROVIDERS.claude.stdinUserFormat,
-    parseLine: PROVIDERS.claude.parseLine,
-    canUseTool: true,
-    // The gateway's own presets: the bare aliases resolve to the Combo, and
-    // the Combo must not be in Jarvis.
-    aliasModels: false,
-    // Readiness is a live service, not a login: the wrapper falls back to the
-    // Tokenator when the gateway is down, so the answer must not be cached for
-    // the rest of the shell's life (see provider_secrets.cc9_ready).
-    liveSignIn: true,
-};
 // Qoder is its own CLI (qodercli). The query is a positional argument (not
 // stdin), the stream is the claude stream-json shape nearly as-is, and
 // ask-first is impossible in print mode (--permission-prompt-tool conflicts
@@ -358,11 +319,53 @@ function setRegistry(data) {
         // A registry entry must never shadow a built-in provider: the id is
         // what the chat, the model catalogs and the history are keyed on.
         if (PROVIDERS[id]) continue;
-        if (entry.adapter !== "acp" && entry.adapter !== "codex" && entry.adapter !== "openai") continue;
+        if (entry.adapter !== "acp" && entry.adapter !== "codex"
+            && entry.adapter !== "openai" && entry.adapter !== "claude-cli") continue;
+        if (entry.adapter === "claude-cli") {
+            // A CLI that already speaks the claude stream-json protocol: no
+            // bridge, the entry's command is executed as given (it may carry
+            // its own "env VAR=…" prefix). The catalog comes from models.py.
+            var argv = Array.isArray(entry.command) ? entry.command.slice()
+                : String(entry.command || "").split(/\s+/).filter(Boolean);
+            if (!argv.length) continue;
+            _registryDescriptors[id] = {
+                id: id,
+                title: String(entry.title || id),
+                adapter: "claude-cli",
+                // No bridge: the CLI speaks the canonical protocol itself.
+                bridge: false,
+                command: argv,
+                caps: {
+                    // Ask-first needs the can_use_tool handshake; an arbitrary
+                    // wrapper may not implement it, so the chat stays unattended.
+                    askFirst: false,
+                    cost: true,
+                    stdinEnabled: true,
+                    cancelViaStdin: true,
+                    perSessionRestore: true,
+                    registryHistory: true
+                },
+                stdinUserFormat: PROVIDERS.claude.stdinUserFormat,
+                parseLine: PROVIDERS.claude.parseLine,
+                buildCommand: function (opts) {
+                    // claude's own command line, with the entry's argv as the
+                    // program: "env VAR=1 vendor-cli" stays a shell prefix.
+                    var cli = argv.map(function (a) { return opts.q(a); }).join(" ");
+                    return PROVIDERS.claude.buildCommand(Object.assign({}, opts, { cli: cli }));
+                },
+                canUseTool: false,
+                aliasModels: false,
+                requiresKey: false
+            };
+            continue;
+        }
         _registryDescriptors[id] = {
             id: id,
             title: String(entry.title || id),
             adapter: entry.adapter,
+            // Bridge-backed: the command is handed to a bridge and the stdin
+            // stream takes a config line before the user message.
+            bridge: true,
             command: entry.command || "",
             baseUrl: entry.baseUrl || "",
             caps: {
@@ -430,7 +433,7 @@ function chipLabel(label, max) {
 // Whether a saved model id still fits the catalog that was just fetched.
 // The id survives when the catalog offers it — by its id or by the model it
 // resolves to. A bare alias ("opus") survives only while the catalog still
-// lists the aliases: a harness aggregate (cc9 + 9Router) has none, and there
+// lists the aliases: a harness aggregate from a wrapper has none, and there
 // "opus" is the Combo, which must not be in Jarvis. Live 2026-11-03: with the
 // aggregate in the picker a leftover id of another provider ("kimi-k2.8-preview")
 // looked like an alias (letters and dashes only) and kept the picker stuck on

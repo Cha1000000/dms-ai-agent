@@ -25,10 +25,10 @@ action = argv[0] if argv else "list"
 # The known providers. An unknown one is rejected: silently answering with the
 # claude catalog (models.py) or with an empty history (here) would make the
 # same wrong input give two different answers.
-KNOWN_PROVIDERS = ("claude", "cvc", "cc9", "qoder", "kimi")
+KNOWN_PROVIDERS = ("claude", "cvc", "qoder", "kimi")
 # Transcripts of the stock claude CLI (also run against the CVC gateway).
-TRANSCRIPT_PROVIDERS = ("claude", "cvc", "cc9")
-# Providers registered in providers.json (adapters acp/codex/openai). Their
+TRANSCRIPT_PROVIDERS = ("claude", "cvc")
+# Providers registered in providers.json (acp/codex/claude-cli/openai). Their
 # transcripts are in formats/scans the plugin does not own, so like qoder/kimi
 # the Jarvis session registry is the only history — but the set is dynamic.
 import registry as _prov_registry  # noqa: E402
@@ -60,9 +60,6 @@ if "--all-dirs" in argv:
 TRANSCRIPT_ROOTS = {
     "claude": "~/.claude/projects",
     "cvc": "~/.claude/projects",
-    # cc9 keeps its own config dir, but the transcripts live in the shared
-    # store it symlinks (~/.claude-cc9/projects -> ~/.claude/projects).
-    "cc9": "~/.claude/projects",
     "qoder": "~/.qoder/projects",
 }
 
@@ -393,8 +390,8 @@ elif action == "delete":
             if ok or foreign or stale:
                 sessions_registry.remove(provider, sid)
                 entry_removed = True
-                # Claude Code, CheapVibeCode and cc9 share one transcript
-                # store, so the session is gone for all of them.
+                # Claude Code and CheapVibeCode share one transcript store,
+                # so the session is gone for both of them.
                 for other in TRANSCRIPT_PROVIDERS:
                     if other != provider:
                         sessions_registry.remove(other, sid)
@@ -611,7 +608,7 @@ elif action == "restore":
                         # Subagent replies and synthetic records say nothing about
                         # the chat's own model (the sidechain flag and a real id
                         # decide). The old "claude-" prefix filter also hid every
-                        # gateway model: cc9 runs "cvc/…", "kimi/…", CVC runs
+                        # gateway model: a CVC-style gateway runs "cvc/…", "kimi/…";
                         # "gpt-…", so per-session restore never worked there.
                         used = d.get("requestedModel") or d.get("message", {}).get("model") or ""
                         if not d.get("isSidechain") and used and not str(used).startswith("<"):
