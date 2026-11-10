@@ -8,7 +8,8 @@ SETTINGS = Path(__file__).resolve().parents[1] / "DmsAgentSettings.qml"
 
 def run_script(body):
     source = SETTINGS.read_text()
-    names = ("validateEntry", "prepareSave", "confirmNext", "submit", "submitJson")
+    names = ("validateEntry", "prepareSave", "confirmNext", "submit", "submitJson",
+             "errorFieldFor", "setFieldError", "clearFieldError")
     functions = []
     for name in names:
         start = source.index("        function " + name + "(")
@@ -18,6 +19,7 @@ def run_script(body):
 const I18n = {t: (_, key) => key}, root = {uiLanguage: 'en'};
 const Providers = {all: () => ['claude', 'cvc', 'cc9', 'qoder', 'kimi'].map(id => ({id}))};
 let providers = {}, registryLoaded = true, loadFailed = false, formError = '';
+let fieldError = '', fieldErrorField = '';
 let pendingId = '', pendingEntry = null, pendingKey = '', pendingCommandText = '', pendingUrlValue = '', pendingNeedsUrl = false;
 let saveProc = {running: false}, keyProc = {running: false};
 let confirmCommandDialog = {visible: false}, confirmUrlDialog = {visible: false};

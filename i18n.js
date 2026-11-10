@@ -78,6 +78,8 @@ var STRINGS = {
 
         "settings.reg.title": "Custom providers",
         "settings.reg.add": "Add",
+        "settings.reg.addProvider": "Add provider",
+        "settings.reg.inUse": "in use",
         "settings.reg.save": "Save",
         "settings.reg.cancel": "Cancel",
         "settings.reg.edit": "Edit",
@@ -331,6 +333,8 @@ var STRINGS = {
 
         "settings.reg.title": "Свои провайдеры",
         "settings.reg.add": "Добавить",
+        "settings.reg.addProvider": "Добавить провайдера",
+        "settings.reg.inUse": "используется",
         "settings.reg.save": "Сохранить",
         "settings.reg.cancel": "Отмена",
         "settings.reg.edit": "Править",

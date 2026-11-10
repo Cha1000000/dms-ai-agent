@@ -37,7 +37,12 @@ PluginSettings {
     // would override them. A 0 ms timer and a change of our own flag do the
     // post-init read instead.
     property bool serviceReady: pluginService !== null
-    onServiceReadyChanged: Qt.callLater(reloadLanguage)
+    onServiceReadyChanged: {
+        Qt.callLater(reloadLanguage);
+        // The stored provider can only be resolved once plugin data is here:
+        // a registry id read earlier falls back to the default label.
+        if (serviceReady) Qt.callLater(function() { providerSelect.loadValue(); });
+    }
     Timer {
         interval: 0
         running: true
@@ -74,6 +79,11 @@ PluginSettings {
     // Agent CLIs the chat can run. Providers.js is the registry; adding one there
     // is enough for it to show up here and in the model picker.
     property var externalProviders: ({})
+    // SelectionSetting resolves its stored value against the options it has at
+    // that moment. Registry providers arrive later (registry.py is a Process),
+    // so a saved "opencode-acp" fell back to the default label and the "in use"
+    // badge had nothing to match. Re-read once the list is complete.
+    onExternalProvidersChanged: Qt.callLater(function() { providerSelect.loadValue(); })
     readonly property var providerOptions: {
         const list = [];
         for (const p of Providers.all())
@@ -270,10 +280,12 @@ PluginSettings {
 
     component RegistryProviders: Column {
         id: regProviders
-        width: parent.width
+        width: parent ? parent.width : 0
         spacing: Theme.spacingM
 
         property var providers: ({})
+        // The provider the chat is set to: the row list badges it.
+        property string activeProviderId: ""
         property bool loadFailed: false
         property string loadError: ""
         property bool registryLoaded: false
@@ -367,6 +379,11 @@ PluginSettings {
                     regProviders.setKey(pendingId, regProviders.pendingKey);
                     regProviders.pendingKey = "";
                     formKeyField.text = "";
+                    // The key write can still fail: keep the form (and its
+                    // error line) in place until keyProc answers.
+                } else {
+                    // The entry is written: fold the form and show the row.
+                    regProviders.cancelForm();
                 }
                 regProviders.reload();
             }
@@ -388,7 +405,7 @@ PluginSettings {
                     regProviders.loadError = errorText;
                     return;
                 }
-                if (regProviders.editorId === removeProc.pendingId) regProviders.startNew();
+                if (regProviders.editorId === removeProc.pendingId) regProviders.cancelForm();
                 regProviders.reload();
             }
         }
@@ -424,7 +441,33 @@ PluginSettings {
         // --- Add / edit form ---
         property string formId: ""        // "" = new
         property string pendingEditId: ""
+        // The form is folded away until the user asks for it: a permanent
+        // "New provider" block under the list made the header button look dead
+        // (it only cleared an already empty form).
+        property bool formVisible: false
+        // Which field the last validation error belongs to: "" = a general
+        // save error, otherwise the error sits under id/command/url.
+        property string fieldError: ""
+        property string fieldErrorField: ""
 
+        function clearFieldError() {
+            fieldError = "";
+            fieldErrorField = "";
+        }
+        // validateEntry()/submit() speak in i18n keys; the form shows the text
+        // under the offending field instead of one line below the buttons.
+        function errorFieldFor(code) {
+            if (code === "settings.reg.badId" || code === "settings.reg.reservedId"
+                || code === "settings.reg.idConflict") return "id";
+            if (code === "settings.reg.badUrl") return "url";
+            if (code === "settings.reg.needCommand") return "command";
+            return "";
+        }
+        function setFieldError(code) {
+            formError = I18n.t(root.uiLanguage, code);
+            fieldError = formError;
+            fieldErrorField = errorFieldFor(code);
+        }
         function startEdit(pid) {
             jsonMode = false;
             const e = providers[pid] || {};
@@ -437,6 +480,8 @@ PluginSettings {
             formCommand = Array.isArray(e.command) ? e.command.join(" ") : String(e.command || "");
             formBaseUrl = e.baseUrl || "";
             formError = "";
+            clearFieldError();
+            formVisible = true;
         }
         function startNew() {
             jsonMode = false;
@@ -448,6 +493,23 @@ PluginSettings {
             formCommand = "";
             formBaseUrl = "";
             formError = "";
+            clearFieldError();
+            formVisible = true;
+        }
+        function cancelForm() {
+            jsonMode = false;
+            formVisible = false;
+            // A pending confirmation must not outlive the form it belonged to.
+            confirmCommandDialog.visible = false;
+            confirmUrlDialog.visible = false;
+            formKeyField.text = "";
+            formId = "";
+            pendingEditId = "";
+            formTitle = "";
+            formCommand = "";
+            formBaseUrl = "";
+            formError = "";
+            clearFieldError();
         }
         function validateEntry(pid, entry) {
             if (!/^[a-z0-9-]+$/.test(pid)) return "settings.reg.badId";
@@ -476,7 +538,8 @@ PluginSettings {
             if (!registryLoaded || loadFailed || saveProc.running || keyProc.running) return;
             const error = validateEntry(pid, entry);
             if (error) {
-                formError = I18n.t(root.uiLanguage, error);
+                if (jsonMode) formError = I18n.t(root.uiLanguage, error);
+                else setFieldError(error);
                 return;
             }
             const old = providers[pid] || null;
@@ -487,6 +550,7 @@ PluginSettings {
             pendingUrlValue = entry.baseUrl || "";
             pendingNeedsUrl = entry.adapter === "openai" && (!old || old.baseUrl !== entry.baseUrl);
             formError = "";
+            clearFieldError();
             if (entry.command && (!old || JSON.stringify(old.command) !== JSON.stringify(entry.command)))
                 confirmCommandDialog.visible = true;
             else
@@ -503,7 +567,7 @@ PluginSettings {
         function submit() {
             const pid = formId.trim();
             if ((pendingEditId && pid !== pendingEditId) || (!pendingEditId && Object.prototype.hasOwnProperty.call(providers, pid))) {
-                formError = I18n.t(root.uiLanguage, "settings.reg.idConflict");
+                setFieldError("settings.reg.idConflict");
                 return;
             }
             const entry = Object.assign({}, providers[pid] || {});
@@ -561,7 +625,9 @@ PluginSettings {
                 Layout.fillWidth: true
             }
             DankButton {
-                text: I18n.t(root.uiLanguage, "settings.reg.add")
+                // Opens the form below; without this the section had two
+                // identical "Add" buttons and the header one did nothing.
+                text: I18n.t(root.uiLanguage, "settings.reg.addProvider")
                 onClicked: regProviders.startNew()
             }
         }
@@ -575,255 +641,169 @@ PluginSettings {
             text: I18n.t(root.uiLanguage, "settings.reg.loadFailed") + " " + regProviders.loadError
         }
 
-        // Rows: one per registry provider.
+        // --- Add / edit form ---
+        // Above the list and folded away until asked for: the form used to sit
+        // under the rows, always open, so the header button looked dead and the
+        // editor could open off-screen.
         Column {
             width: parent.width
-            spacing: Theme.spacingXS
-            visible: Object.keys(regProviders.providers).length > 0
+            spacing: Theme.spacingS
+            visible: regProviders.formVisible && !regProviders.jsonMode
+            // Opening the form must land the caret in the first field: a form
+            // that appears without focus made the header button look half-done
+            // and left the user to click the field themselves.
+            // Opening the form must land the caret in the first field: a form
+            // that appears without focus made the header button look half-done
+            // and left the user to click the field themselves.
+            onVisibleChanged: if (visible) Qt.callLater(function() { formIdField.forceActiveFocus(); })
 
-            Repeater {
-                model: Object.keys(regProviders.providers)
-                delegate: Rectangle {
-                    id: regRow
-                    required property string modelData
-                    readonly property var entry: regProviders.providers[modelData] || {}
-                    width: parent.width
-                    height: regRowInner.implicitHeight + Theme.spacingS * 2
-                    radius: Theme.cornerRadius
-                    color: Theme.withAlpha(Theme.surfaceVariant, 0.3)
+            StyledText {
+                width: parent.width
+                text: regProviders.pendingEditId === ""
+                      ? I18n.t(root.uiLanguage, "settings.reg.newProvider")
+                      : I18n.t(root.uiLanguage, "settings.reg.editing") + " " + regProviders.pendingEditId
+                font.pixelSize: Theme.fontSizeMedium
+                font.weight: Font.Medium
+                color: Theme.surfaceText
+            }
 
-                    Column {
-                        id: regRowInner
-                        anchors.fill: parent
-                        anchors.margins: Theme.spacingS
-                        spacing: Theme.spacingXXS
+            // What the adapter choice means: read it before picking one, not
+            // after the buttons.
+            StyledText {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: I18n.t(root.uiLanguage, "settings.reg.hint")
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.surfaceVariantText
+            }
 
-                        RowLayout {
-                            width: parent.width
-                            spacing: Theme.spacingS
-                            StyledText {
-                                text: modelData
-                                font.pixelSize: Theme.fontSizeSmall
-                                font.weight: Font.Medium
-                                color: Theme.surfaceText
-                                Layout.fillWidth: true
-                            }
-                            StyledText {
-                                text: regRow.entry.adapter || ""
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: Theme.surfaceVariantText
-                            }
-                            Rectangle {
-                                width: editRow.width + Theme.spacingS; height: Theme.iconSize
-                                radius: Theme.cornerRadius
-                                color: editArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.2) : "transparent"
-                                Row {
-                                    id: editRow
-                                    anchors.centerIn: parent
-                                    spacing: Theme.spacingXXS
-                                    DankIcon { name: "edit"; size: Theme.iconSizeSmall; color: editArea.containsMouse ? Theme.primary : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
-                                    StyledText { text: I18n.t(root.uiLanguage, "settings.reg.edit"); font.pixelSize: Theme.fontSizeSmall; color: editArea.containsMouse ? Theme.primary : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
-                                }
-                                MouseArea {
-                                    id: editArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: regProviders.startEdit(modelData)
-                                }
-                            }
-                            DankButton {
-                                text: I18n.t(root.uiLanguage, "settings.reg.jsonEdit")
-                                onClicked: regProviders.openJson(modelData)
-                            }
-                            Rectangle {
-                                width: delRow.width + Theme.spacingS; height: Theme.iconSize
-                                radius: Theme.cornerRadius
-                                color: delArea.containsMouse ? Theme.withAlpha(Theme.danger, 0.2) : "transparent"
-                                Row {
-                                    id: delRow
-                                    anchors.centerIn: parent
-                                    spacing: Theme.spacingXXS
-                                    DankIcon { name: "delete"; size: Theme.iconSizeSmall; color: delArea.containsMouse ? Theme.danger : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
-                                    StyledText { text: I18n.t(root.uiLanguage, "settings.reg.remove"); font.pixelSize: Theme.fontSizeSmall; color: delArea.containsMouse ? Theme.danger : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
-                                }
-                                MouseArea {
-                                    id: delArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        regProviders.confirmRemoveId = modelData;
-                                        regProviders.confirmRemoveTitle = regRow.entry.title || modelData;
-                                        regProviders.confirmRemoveDialog.visible = true;
-                                    }
-                                }
-                            }
-                        }
-
-                        // Executed program / gateway address, visible without opening the editor.
-                        StyledText {
-                            visible: Array.isArray(regRow.entry.command)
-                            width: parent.width
-                            text: I18n.t(root.uiLanguage, "settings.reg.runs") + " " + regProviders.commandText(regRow.entry)
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: Theme.surfaceVariantText
-                            elide: Text.ElideMiddle
-                        }
-                        StyledText {
-                            visible: !!regRow.entry.baseUrl
-                            width: parent.width
-                            text: I18n.t(root.uiLanguage, "settings.reg.gateway") + " " + regRow.entry.baseUrl
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: Theme.surfaceVariantText
-                            elide: Text.ElideMiddle
-                        }
+            RowLayout {
+                width: parent.width
+                spacing: Theme.spacingS
+                DankTextField {
+                    id: formIdField
+                    Layout.fillWidth: true
+                    placeholderText: I18n.t(root.uiLanguage, "settings.reg.idPlaceholder")
+                    text: regProviders.formId
+                    enabled: regProviders.pendingEditId === ""
+                    onTextEdited: {
+                        regProviders.formId = text;
+                        regProviders.clearFieldError();
                     }
+                }
+                DDropdown {
+                    id: formAdapterSelect
+                    width: 160
+                    text: ""
+                    currentValue: regProviders.formAdapter === "acp" ? "ACP"
+                                  : regProviders.formAdapter === "codex" ? "Codex" : "OpenAI gateway"
+                    options: ["ACP", "Codex", "OpenAI gateway"]
+                    onValueChanged: newValue => {
+                        regProviders.formAdapter = newValue === "ACP" ? "acp"
+                            : newValue === "Codex" ? "codex" : "openai";
+                        regProviders.clearFieldError();
+                    }
+                }
+            }
+
+            StyledText {
+                visible: regProviders.fieldErrorField === "id"
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: regProviders.fieldError
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.withAlpha(Theme.error, 0.9)
+            }
+
+            DankTextField {
+                id: formTitleField
+                width: parent.width
+                placeholderText: I18n.t(root.uiLanguage, "settings.reg.titlePlaceholder")
+                text: regProviders.formTitle
+                onTextEdited: regProviders.formTitle = text
+            }
+
+            DankTextField {
+                id: formCommandField
+                width: parent.width
+                visible: regProviders.formAdapter !== "openai"
+                placeholderText: I18n.t(root.uiLanguage, "settings.reg.commandPlaceholder")
+                text: regProviders.formCommand
+                onTextEdited: {
+                    regProviders.formCommand = text;
+                    regProviders.clearFieldError();
+                }
+            }
+
+            StyledText {
+                visible: regProviders.fieldErrorField === "command"
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: regProviders.fieldError
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.withAlpha(Theme.error, 0.9)
+            }
+
+            DankTextField {
+                id: formUrlField
+                width: parent.width
+                visible: regProviders.formAdapter === "openai"
+                placeholderText: I18n.t(root.uiLanguage, "settings.reg.urlPlaceholder")
+                text: regProviders.formBaseUrl
+                onTextEdited: {
+                    regProviders.formBaseUrl = text;
+                    regProviders.clearFieldError();
+                }
+            }
+
+            StyledText {
+                visible: regProviders.fieldErrorField === "url"
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: regProviders.fieldError
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.withAlpha(Theme.error, 0.9)
+            }
+
+            DankTextField {
+                id: formKeyField
+                width: parent.width
+                // Only the OpenAI gateway bridge reads a key; an ACP/Codex
+                // entry would store a secret nothing uses.
+                visible: regProviders.formAdapter === "openai"
+                placeholderText: I18n.t(root.uiLanguage, "settings.reg.keyPlaceholder")
+                showPasswordToggle: true
+                echoMode: TextInput.Password
+            }
+
+            // Save failures (write error, key error) have no field: they stay
+            // in one line above the buttons.
+            StyledText {
+                visible: regProviders.formError !== "" && regProviders.fieldErrorField === ""
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: regProviders.formError
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.withAlpha(Theme.error, 0.9)
+            }
+
+            Row {
+                spacing: Theme.spacingS
+                DankButton {
+                    text: regProviders.pendingEditId === ""
+                          ? I18n.t(root.uiLanguage, "settings.reg.add")
+                          : I18n.t(root.uiLanguage, "settings.reg.save")
+                    enabled: regProviders.registryLoaded && !regProviders.loadFailed && !saveProc.running && !keyProc.running
+                    onClicked: regProviders.submit()
+                }
+                DankButton {
+                    text: I18n.t(root.uiLanguage, "settings.reg.cancel")
+                    onClicked: regProviders.cancelForm()
                 }
             }
         }
 
-        // Remove confirmation: the registry entry disappears from this and every
-        // future session list; history rows of that provider stop resolving.
-        property string confirmRemoveId: ""
-        property string confirmRemoveTitle: ""
-        Rectangle {
-            id: confirmRemoveDialog
-            visible: false
-            anchors.fill: parent
-            color: Theme.withAlpha(Theme.shadow, 0.55)
-            z: 30
-            MouseArea { anchors.fill: parent; onClicked: confirmRemoveDialog.visible = false }
-            Rectangle {
-                width: parent.width - Theme.spacingXL * 2
-                height: rmCol.height + Theme.spacingL * 2
-                anchors.centerIn: parent
-                radius: Theme.cornerRadius
-                color: Theme.surfaceContainerHighest
-                MouseArea { anchors.fill: parent }
-                Column {
-                    id: rmCol
-                    anchors.centerIn: parent
-                    width: parent.width - Theme.spacingL * 2
-                    spacing: Theme.spacingM
-                    StyledText {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        text: I18n.t(root.uiLanguage, "settings.reg.confirmRemove") + "\n" + regProviders.confirmRemoveId + " (" + regProviders.confirmRemoveTitle + ")"
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.surfaceText
-                    }
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: Theme.spacingS
-                        DankButton {
-                            text: I18n.t(root.uiLanguage, "settings.reg.cancel")
-                            onClicked: confirmRemoveDialog.visible = false
-                        }
-                        DankButton {
-                            text: I18n.t(root.uiLanguage, "settings.reg.remove")
-                            onClicked: {
-                                regProviders.removeProvider(regProviders.confirmRemoveId);
-                                confirmRemoveDialog.visible = false;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Command-change confirmation: the new argv will be executed as-is.
-        Rectangle {
-            id: confirmCommandDialog
-            visible: false
-            anchors.fill: parent
-            color: Theme.withAlpha(Theme.shadow, 0.55)
-            z: 30
-            MouseArea { anchors.fill: parent; onClicked: confirmCommandDialog.visible = false }
-            Rectangle {
-                width: parent.width - Theme.spacingXL * 2
-                height: cmdCol.height + Theme.spacingL * 2
-                anchors.centerIn: parent
-                radius: Theme.cornerRadius
-                color: Theme.surfaceContainerHighest
-                MouseArea { anchors.fill: parent }
-                Column {
-                    id: cmdCol
-                    anchors.centerIn: parent
-                    width: parent.width - Theme.spacingL * 2
-                    spacing: Theme.spacingM
-                    StyledText {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        text: I18n.t(root.uiLanguage, "settings.reg.confirmCommand") + "\n" + regProviders.pendingCommandText
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.surfaceText
-                    }
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: Theme.spacingS
-                        DankButton {
-                            text: I18n.t(root.uiLanguage, "settings.reg.cancel")
-                            onClicked: confirmCommandDialog.visible = false
-                        }
-                        DankButton {
-                            text: I18n.t(root.uiLanguage, "settings.reg.confirm")
-                            onClicked: {
-                                confirmCommandDialog.visible = false;
-                                regProviders.confirmNext();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // URL-change confirmation: the stored API key would be sent to a new origin.
-        Rectangle {
-            id: confirmUrlDialog
-            visible: false
-            anchors.fill: parent
-            color: Theme.withAlpha(Theme.shadow, 0.55)
-            z: 30
-            MouseArea { anchors.fill: parent; onClicked: confirmUrlDialog.visible = false }
-            Rectangle {
-                width: parent.width - Theme.spacingXL * 2
-                height: urlCol.height + Theme.spacingL * 2
-                anchors.centerIn: parent
-                radius: Theme.cornerRadius
-                color: Theme.surfaceContainerHighest
-                MouseArea { anchors.fill: parent }
-                Column {
-                    id: urlCol
-                    anchors.centerIn: parent
-                    width: parent.width - Theme.spacingL * 2
-                    spacing: Theme.spacingM
-                    StyledText {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        text: I18n.t(root.uiLanguage, "settings.reg.confirmUrl") + "\n" + regProviders.pendingUrlValue
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.surfaceText
-                    }
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: Theme.spacingS
-                        DankButton {
-                            text: I18n.t(root.uiLanguage, "settings.reg.cancel")
-                            onClicked: confirmUrlDialog.visible = false
-                        }
-                        DankButton {
-                            text: I18n.t(root.uiLanguage, "settings.reg.confirm")
-                            onClicked: {
-                                confirmUrlDialog.visible = false;
-                                regProviders.confirmNext();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
+        // --- JSON editor: one entry, never the keys section ---
         Column {
             width: parent.width
             spacing: Theme.spacingS
@@ -859,119 +839,265 @@ PluginSettings {
                 }
                 DankButton {
                     text: I18n.t(root.uiLanguage, "settings.reg.cancel")
-                    onClicked: regProviders.startNew()
+                    onClicked: regProviders.cancelForm()
                 }
             }
         }
 
-        // --- The form ---
-        Column {
+        // Confirmations for the form sit right under it: a card placed after
+        // the provider list opened off-screen and looked like nothing happened.
+        // Command-change confirmation: the new argv will be executed as-is.
+        Rectangle {
+            id: confirmCommandDialog
+            visible: false
             width: parent.width
-            spacing: Theme.spacingS
-            visible: !regProviders.jsonMode
-
-            StyledText {
-                text: regProviders.formId === ""
-                      ? I18n.t(root.uiLanguage, "settings.reg.newProvider")
-                      : I18n.t(root.uiLanguage, "settings.reg.editing") + " " + regProviders.formId
-                font.pixelSize: Theme.fontSizeSmall
-                font.weight: Font.Medium
-                color: Theme.surfaceVariantText
-            }
-
-            RowLayout {
-                width: parent.width
+            height: cmdCol.implicitHeight + Theme.spacingM * 2
+            radius: Theme.cornerRadius
+            color: Theme.surfaceContainerHighest
+            border.width: 1
+            border.color: Theme.withAlpha(Theme.primary, 0.45)
+            Column {
+                id: cmdCol
+                x: Theme.spacingM
+                y: Theme.spacingM
+                width: parent.width - Theme.spacingM * 2
                 spacing: Theme.spacingS
-                DankTextField {
-                    id: formIdField
-                    Layout.fillWidth: true
-                    placeholderText: I18n.t(root.uiLanguage, "settings.reg.idPlaceholder")
-                    text: regProviders.formId
-                    enabled: regProviders.pendingEditId === ""
-                    onTextEdited: regProviders.formId = text
+                StyledText {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: I18n.t(root.uiLanguage, "settings.reg.confirmCommand") + "\n" + regProviders.pendingCommandText
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.surfaceText
                 }
-                DDropdown {
-                    id: formAdapterSelect
-                    width: 160
-                    text: ""
-                    currentValue: regProviders.formAdapter === "acp" ? "ACP"
-                                  : regProviders.formAdapter === "codex" ? "Codex" : "OpenAI gateway"
-                    options: ["ACP", "Codex", "OpenAI gateway"]
-                    onValueChanged: newValue => {
-                        regProviders.formAdapter = newValue === "ACP" ? "acp"
-                            : newValue === "Codex" ? "codex" : "openai";
+                Row {
+                    spacing: Theme.spacingS
+                    DankButton {
+                        text: I18n.t(root.uiLanguage, "settings.reg.cancel")
+                        onClicked: confirmCommandDialog.visible = false
+                    }
+                    DankButton {
+                        text: I18n.t(root.uiLanguage, "settings.reg.confirm")
+                        onClicked: {
+                            confirmCommandDialog.visible = false;
+                            regProviders.confirmNext();
+                        }
                     }
                 }
             }
+        }
 
-            DankTextField {
-                id: formTitleField
-                width: parent.width
-                placeholderText: I18n.t(root.uiLanguage, "settings.reg.titlePlaceholder")
-                text: regProviders.formTitle
-                onTextEdited: regProviders.formTitle = text
-            }
-
-            DankTextField {
-                id: formCommandField
-                width: parent.width
-                visible: regProviders.formAdapter !== "openai"
-                placeholderText: I18n.t(root.uiLanguage, "settings.reg.commandPlaceholder")
-                text: regProviders.formCommand
-                onTextEdited: regProviders.formCommand = text
-            }
-
-            DankTextField {
-                id: formUrlField
-                width: parent.width
-                visible: regProviders.formAdapter === "openai"
-                placeholderText: I18n.t(root.uiLanguage, "settings.reg.urlPlaceholder")
-                text: regProviders.formBaseUrl
-                onTextEdited: regProviders.formBaseUrl = text
-            }
-
-            DankTextField {
-                id: formKeyField
-                width: parent.width
-                // Only the OpenAI gateway bridge reads a key; an ACP/Codex
-                // entry would store a secret nothing uses.
-                visible: regProviders.formAdapter === "openai"
-                placeholderText: I18n.t(root.uiLanguage, "settings.reg.keyPlaceholder")
-                showPasswordToggle: true
-                echoMode: TextInput.Password
-            }
-
-            StyledText {
-                visible: regProviders.formError !== ""
-                width: parent.width
-                wrapMode: Text.WordWrap
-                text: regProviders.formError
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.withAlpha(Theme.error, 0.9)
-            }
-
-            Row {
+        // URL-change confirmation: the stored API key would be sent to a new origin.
+        Rectangle {
+            id: confirmUrlDialog
+            visible: false
+            width: parent.width
+            height: urlCol.implicitHeight + Theme.spacingM * 2
+            radius: Theme.cornerRadius
+            color: Theme.surfaceContainerHighest
+            border.width: 1
+            border.color: Theme.withAlpha(Theme.primary, 0.45)
+            Column {
+                id: urlCol
+                x: Theme.spacingM
+                y: Theme.spacingM
+                width: parent.width - Theme.spacingM * 2
                 spacing: Theme.spacingS
-                DankButton {
-                    text: regProviders.pendingEditId === "" ? I18n.t(root.uiLanguage, "settings.reg.add") : I18n.t(root.uiLanguage, "settings.reg.save")
-                    enabled: regProviders.registryLoaded && !regProviders.loadFailed && !saveProc.running && !keyProc.running
-                    onClicked: regProviders.submit()
+                StyledText {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: I18n.t(root.uiLanguage, "settings.reg.confirmUrl") + "\n" + regProviders.pendingUrlValue
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.surfaceText
                 }
-                DankButton {
-                    visible: regProviders.formId !== ""
-                    text: I18n.t(root.uiLanguage, "settings.reg.cancel")
-                    onClicked: regProviders.startNew()
+                Row {
+                    spacing: Theme.spacingS
+                    DankButton {
+                        text: I18n.t(root.uiLanguage, "settings.reg.cancel")
+                        onClicked: confirmUrlDialog.visible = false
+                    }
+                    DankButton {
+                        text: I18n.t(root.uiLanguage, "settings.reg.confirm")
+                        onClicked: {
+                            confirmUrlDialog.visible = false;
+                            regProviders.confirmNext();
+                        }
+                    }
                 }
-            }
-
-            StyledText {
-                width: parent.width
-                wrapMode: Text.WordWrap
-                text: I18n.t(root.uiLanguage, "settings.reg.hint")
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.surfaceVariantText
             }
         }
+
+        // Rows: one per registry provider.
+        Column {
+            width: parent.width
+            spacing: Theme.spacingXS
+            visible: Object.keys(regProviders.providers).length > 0
+
+            Repeater {
+                model: Object.keys(regProviders.providers)
+                delegate: Rectangle {
+                    id: regRow
+                    required property string modelData
+                    readonly property var entry: regProviders.providers[modelData] || {}
+                    width: parent.width
+                    height: regRowInner.implicitHeight + Theme.spacingS * 2
+                    radius: Theme.cornerRadius
+                    color: Theme.withAlpha(Theme.surfaceVariant, 0.3)
+
+                    Column {
+                        id: regRowInner
+                        anchors.fill: parent
+                        anchors.margins: Theme.spacingS
+                        spacing: Theme.spacingXXS
+
+                        RowLayout {
+                            width: parent.width
+                            spacing: Theme.spacingS
+                            StyledText {
+                                text: modelData
+                                font.pixelSize: Theme.fontSizeSmall
+                                font.weight: Font.Medium
+                                color: Theme.surfaceText
+                                Layout.fillWidth: true
+                                wrapMode: Text.NoWrap
+                                elide: Text.ElideRight
+                            }
+                            // Which provider the chat runs: without this the
+                            // list gave no sign that one of the rows is active.
+                            StyledText {
+                                visible: modelData === regProviders.activeProviderId
+                                text: I18n.t(root.uiLanguage, "settings.reg.inUse")
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.primary
+                                wrapMode: Text.NoWrap
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            StyledText {
+                                text: regRow.entry.adapter || ""
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+                        }
+
+                        // Executed program / gateway address, visible without opening the editor.
+                        StyledText {
+                            visible: Array.isArray(regRow.entry.command)
+                            width: parent.width
+                            text: I18n.t(root.uiLanguage, "settings.reg.runs") + " " + regProviders.commandText(regRow.entry)
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            elide: Text.ElideMiddle
+                        }
+                        StyledText {
+                            visible: !!regRow.entry.baseUrl
+                            width: parent.width
+                            text: I18n.t(root.uiLanguage, "settings.reg.gateway") + " " + regRow.entry.baseUrl
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            elide: Text.ElideMiddle
+                        }
+
+                        // Actions on their own line: inline with the id they
+                        // overran the row and the button covered the JSON link.
+                        Row {
+                            anchors.right: parent.right
+                            spacing: Theme.spacingS
+                            // The everyday action carries the button; JSON and
+                            // removal stay quiet links so the eye lands on "Edit".
+                            DankButton {
+                                text: I18n.t(root.uiLanguage, "settings.reg.edit")
+                                onClicked: regProviders.startEdit(modelData)
+                            }
+                            Rectangle {
+                                width: jsonRow.width + Theme.spacingS; height: Theme.iconSize
+                                radius: Theme.cornerRadius
+                                color: jsonArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.2) : "transparent"
+                                Row {
+                                    id: jsonRow
+                                    anchors.centerIn: parent
+                                    spacing: Theme.spacingXXS
+                                    DankIcon { name: "code"; size: Theme.iconSizeSmall; color: jsonArea.containsMouse ? Theme.primary : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                                    StyledText { text: I18n.t(root.uiLanguage, "settings.reg.jsonEdit"); font.pixelSize: Theme.fontSizeSmall; color: jsonArea.containsMouse ? Theme.primary : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                                }
+                                MouseArea {
+                                    id: jsonArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: regProviders.openJson(modelData)
+                                }
+                            }
+                            Rectangle {
+                                width: delRow.width + Theme.spacingS; height: Theme.iconSize
+                                radius: Theme.cornerRadius
+                                color: delArea.containsMouse ? Theme.withAlpha(Theme.danger, 0.2) : "transparent"
+                                Row {
+                                    id: delRow
+                                    anchors.centerIn: parent
+                                    spacing: Theme.spacingXXS
+                                    DankIcon { name: "delete"; size: Theme.iconSizeSmall; color: delArea.containsMouse ? Theme.danger : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                                    StyledText { text: I18n.t(root.uiLanguage, "settings.reg.remove"); font.pixelSize: Theme.fontSizeSmall; color: delArea.containsMouse ? Theme.danger : Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                                }
+                                MouseArea {
+                                    id: delArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        regProviders.confirmRemoveId = modelData;
+                                        regProviders.confirmRemoveTitle = regRow.entry.title || modelData;
+                                        confirmRemoveDialog.visible = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remove confirmation: the registry entry disappears from this and every
+        // future session list; history rows of that provider stop resolving.
+        property string confirmRemoveId: ""
+        property string confirmRemoveTitle: ""
+        Rectangle {
+            id: confirmRemoveDialog
+            visible: false
+            width: parent.width
+            height: rmCol.implicitHeight + Theme.spacingM * 2
+            radius: Theme.cornerRadius
+            color: Theme.surfaceContainerHighest
+            border.width: 1
+            border.color: Theme.withAlpha(Theme.danger, 0.45)
+            Column {
+                id: rmCol
+                x: Theme.spacingM
+                y: Theme.spacingM
+                width: parent.width - Theme.spacingM * 2
+                spacing: Theme.spacingS
+                StyledText {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: I18n.t(root.uiLanguage, "settings.reg.confirmRemove") + "\n" + regProviders.confirmRemoveId + " (" + regProviders.confirmRemoveTitle + ")"
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.surfaceText
+                }
+                Row {
+                    spacing: Theme.spacingS
+                    DankButton {
+                        text: I18n.t(root.uiLanguage, "settings.reg.cancel")
+                        onClicked: confirmRemoveDialog.visible = false
+                    }
+                    DankButton {
+                        text: I18n.t(root.uiLanguage, "settings.reg.remove")
+                        onClicked: {
+                            regProviders.removeProvider(regProviders.confirmRemoveId);
+                            confirmRemoveDialog.visible = false;
+                        }
+                    }
+                }
+            }
+        }
+
     }
 
     // Sign-in state of the provider the chat will run. The chat already refuses
@@ -1074,6 +1200,7 @@ PluginSettings {
 
                 RegistryProviders {
                     id: registryProviders
+                    activeProviderId: providerSelect.value || "claude"
                 }
 
                 SavedSelection {
