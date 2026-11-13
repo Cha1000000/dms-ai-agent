@@ -118,7 +118,8 @@ def with_claude_aliases(models):
     have = {m["id"] for m in models}
     return models + [m for m in CLAUDE_ALIASES if m["id"] not in have]
 # Same set the Claude Code CLI exposes as --effort; the CVC gateway forwards it
-# for models that can reason.
+# for models that can reason. The picker shows the intersection of this enum
+# with the model's own supported_reasoning_levels (map_cvc_models).
 CVC_EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 # qodercli --reasoning-effort takes auto, none, low, medium, high, xhigh, max,
 # ultracode. "auto" is the empty chip (no flag at all) and "none" turns
@@ -151,12 +152,21 @@ def ask_cli(cli="claude"):
 
 
 def map_cvc_models(payload):
-    """Gateway /v1/models (OpenAI-style) -> the plugin's model list."""
+    """Gateway /v1/models (OpenAI-style) -> the plugin's model list.
+
+    Efforts are the model's own supported_reasoning_levels (the catalog cards
+    under "models", keyed by slug) cut to what the CLI's --effort takes. A
+    model whose card lists nothing in the enum gets no chip: offering a level
+    the gateway does not support is how "effort high" showed up as "low" in
+    the dashboard stats. When the payload carries no cards at all nothing is
+    claimed either — a level we cannot read is a guess."""
     if not isinstance(payload, dict):
         return []
     rows = payload.get("data")
     if not isinstance(rows, list):
         return []
+    cards = {c.get("slug"): c for c in (payload.get("models") or [])
+             if isinstance(c, dict) and c.get("slug")}
     out = []
     for m in rows:
         if not isinstance(m, dict):
@@ -166,13 +176,16 @@ def map_cvc_models(payload):
             continue
         if "fable" in str(mid):
             continue
+        card = cards.get(mid) or {}
+        levels = [l.get("effort") for l in card.get("supported_reasoning_levels") or []
+                  if isinstance(l, dict) and l.get("effort")]
         out.append({
             "id": mid,
             "label": m.get("display_name") or mid,
             # The gateway rejects bare aliases — always pass the full id.
             "resolved": mid,
             "desc": m.get("series") or "",
-            "efforts": list(CVC_EFFORTS) if m.get("supports_reasoning") else [],
+            "efforts": [e for e in CVC_EFFORTS if e in levels],
         })
     return out
 
