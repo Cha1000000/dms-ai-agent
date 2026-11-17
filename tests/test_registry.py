@@ -194,7 +194,7 @@ def test_rejects_non_dict_entry(store):
 def test_rejects_builtin_provider_ids(store):
     """A registry entry must never shadow a built-in provider (chat, catalogs
     and history are keyed on the id)."""
-    for pid in ("claude", "cvc", "qoder", "kimi"):
+    for pid in ("claude", "cvc", "qoder", "kimi", "agy"):
         with pytest.raises(reg.ValidationError):
             reg.set_provider(pid, {"adapter": "openai", "baseUrl": "https://x.example/v1"})
         with pytest.raises(reg.ValidationError):

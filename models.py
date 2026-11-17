@@ -34,7 +34,7 @@ elif "--provider" in argv:
     del argv[i:i + 2]
 # The known providers. An unknown one is rejected: answering with the claude
 # catalog would be a wrong answer with a confident face.
-KNOWN_PROVIDERS = ("claude", "cvc", "qoder", "kimi")
+KNOWN_PROVIDERS = ("claude", "cvc", "qoder", "kimi", "agy")
 # Registered providers (providers.json): their catalog source is their adapter.
 import registry as _prov_registry  # noqa: E402
 
@@ -369,19 +369,13 @@ def ask_openai(pid):
         return json.load(resp)
 
 
-def ask_acp_models(command):
-    """The model catalog of an ACP agent -> the plugin's model list.
-
-    The agent's own list comes with its session (models.availableModels or
-    configOptions with category "model"); asking for it costs no model call:
-    initialize + session/new only, then the process is stopped.
-    """
+def ask_acp_raw(command):
+    """Run ACP initialize + session/new and return the raw session/new result dict."""
     args = list(command or [])
     if not args:
         raise RuntimeError("provider has no command")
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True, bufsize=1)
-    rows = []
     try:
         def send(obj):
             try:
@@ -392,7 +386,6 @@ def ask_acp_models(command):
 
         def read_for(rid, timeout=60):
             import select as _select
-            buf = ""
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
                 ready, _, _ = _select.select([proc.stdout], [], [], 0.5)
@@ -401,7 +394,6 @@ def ask_acp_models(command):
                 line = proc.stdout.readline()
                 if not line:
                     break
-                buf += line
                 try:
                     msg = json.loads(line)
                 except ValueError:
@@ -419,7 +411,7 @@ def ask_acp_models(command):
         if not isinstance(result, dict) or not (result.get("models") or
                                                 result.get("configOptions")):
             raise RuntimeError("the agent did not return a model catalog")
-        rows = map_acp_models(result)
+        return result
     finally:
         try:
             proc.stdin.close()
@@ -429,7 +421,75 @@ def ask_acp_models(command):
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-    return rows
+
+
+def ask_acp_models(command):
+    """The model catalog of an ACP agent -> the plugin's model list.
+
+    The agent's own list comes with its session (models.availableModels or
+    configOptions with category "model"); asking for it costs no model call:
+    initialize + session/new only, then the process is stopped.
+    """
+    return map_acp_models(ask_acp_raw(command))
+
+
+AGY_EFFORT_ORDER = ("low", "medium", "high", "xhigh", "max")
+
+
+def map_agy_models(result):
+    """`agy acp` session/new result -> the plugin's model list.
+
+    `agy` sends 7 base model families in configOptions[category="model"] and
+    all concrete effort-suffixed variants in models.availableModels (where
+    only Hydrogen has -xhigh while initial thought_level omits it). Pair each
+    base family with the exact effort suffixes offered in availableModels.
+    """
+    if not isinstance(result, dict):
+        return []
+    available_ids = set()
+    models = result.get("models")
+    if isinstance(models, dict):
+        for row in models.get("availableModels") or []:
+            if not isinstance(row, dict):
+                continue
+            mid = row.get("modelId") or row.get("id") or row.get("value")
+            if mid:
+                available_ids.add(mid)
+    out = []
+    seen = set()
+    for opt in result.get("configOptions") or []:
+        if not isinstance(opt, dict) or opt.get("category") != "model":
+            continue
+        for entry in opt.get("options") or []:
+            if not isinstance(entry, dict):
+                continue
+            mid = entry.get("value")
+            if not mid or mid in seen or not claude_model_id(mid):
+                continue
+            seen.add(mid)
+            label = entry.get("name") or mid
+            efforts = [e for e in AGY_EFFORT_ORDER if "%s-%s" % (mid, e) in available_ids]
+            low_name = (label + " " + mid).lower()
+            desc = "Claude" if "claude" in low_name else ("Gemini" if "gemini" in low_name else "")
+            out.append({
+                "id": mid,
+                "label": label,
+                "resolved": mid,
+                "desc": desc,
+                "efforts": efforts,
+            })
+    return out
+
+
+def ask_agy():
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="dms-agy-models-") as tmpdir:
+        return ask_acp_raw([
+            "agy", "acp",
+            "--gemini-dir", tmpdir,
+            "--app-data-dir", "agy-app",
+            "--include-default-customizations=false",
+        ])
 
 
 def map_acp_models(result):
@@ -489,6 +549,8 @@ def fetch_models_for(provider):
         return map_qoder_models(ask_qoder())
     if provider == "kimi":
         return map_kimi_models(ask_kimi())
+    if provider == "agy":
+        return map_agy_models(ask_agy())
     adapter = _registered_adapters.get(provider)
     if provider not in KNOWN_PROVIDERS and adapter is None:
         raise RuntimeError("unknown provider %r" % provider)

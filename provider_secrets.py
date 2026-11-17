@@ -106,6 +106,35 @@ def is_signed_in(provider):
         return bool(glob.glob(os.path.expanduser("~/.kimi-code/credentials/*.json")))
     if provider == "qoder":
         return os.path.isfile(os.path.expanduser("~/.qoder/credentials/auth.json"))
+    if provider == "agy":
+        import shutil
+        import subprocess
+        if not shutil.which("secret-tool"):
+            return True  # no answer — let the run decide
+        try:
+            out = subprocess.run(
+                ["secret-tool", "lookup", "service", "gemini", "username", "antigravity"],
+                capture_output=True, text=True, timeout=3,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return True  # keyring probe failed — let the run decide
+        raw = (out.stdout or "").strip()
+        if out.returncode == 0 and raw:
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                return False
+            if not isinstance(data, dict):
+                return False
+            token = data.get("token")
+            if isinstance(token, dict) and (token.get("refresh_token") or token.get("access_token")):
+                return True
+            return False
+        if out.returncode != 0 and (out.stderr or "").strip():
+            return True  # D-Bus / Secret Service unavailable — let the run decide
+        if os.environ.get("GEMINI_API_KEY"):
+            return True
+        return False
     if provider == "claude":
         import subprocess
         try:

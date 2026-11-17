@@ -94,7 +94,7 @@ def test_the_known_providers_still_work(tmp_path):
     cwd = tmp_path / "work"
     cwd.mkdir()
     env = dict(os.environ, HOME=str(tmp_path))
-    for provider in ("claude", "cvc", "qoder", "kimi"):
+    for provider in ("claude", "cvc", "qoder", "kimi", "agy"):
         out = _run_script("history.py", "--provider", provider, "list",
                           cwd=str(cwd), env=env)
         assert out.returncode == 0, (provider, out.stderr)

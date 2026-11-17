@@ -127,7 +127,7 @@ def test_live_checks_are_not_cached_by_the_chat():
     # readiness) is not a login and must not be cached for the shell's
     # lifetime.
     assert run("descriptor_flag", {"id": "cvc", "flag": "liveSignIn"}) is True
-    for pid in ("claude", "qoder", "kimi"):
+    for pid in ("claude", "qoder", "kimi", "agy"):
         assert run("descriptor_flag", {"id": pid, "flag": "liveSignIn"}) is False
 
 

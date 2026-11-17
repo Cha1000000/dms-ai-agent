@@ -17,7 +17,7 @@ def run_script(body):
         functions.append(source[start:end])
     harness = """
 const I18n = {t: (_, key) => key}, root = {uiLanguage: 'en'};
-const Providers = {all: () => ['claude', 'cvc', 'qoder', 'kimi'].map(id => ({id}))};
+const Providers = {all: () => ['claude', 'cvc', 'qoder', 'kimi', 'agy'].map(id => ({id}))};
 let providers = {}, registryLoaded = true, loadFailed = false, formError = '';
 let fieldError = '', fieldErrorField = '';
 let pendingId = '', pendingEntry = null, pendingKey = '', pendingCommandText = '', pendingUrlValue = '', pendingNeedsUrl = false;
@@ -80,7 +80,8 @@ def test_builtin_provider_ids_cannot_be_added():
 console.log(JSON.stringify([
   validateEntry('claude', {adapter:'acp',command:['tool']}),
   validateEntry('cvc', {adapter:'openai',baseUrl:'https://x.example/v1'}),
+  validateEntry('agy', {adapter:'acp',command:['tool']}),
   validateEntry('my-gw', {adapter:'openai',baseUrl:'https://x.example/v1'}),
 ]));
 """)
-    assert result == ["settings.reg.reservedId", "settings.reg.reservedId", ""]
+    assert result == ["settings.reg.reservedId", "settings.reg.reservedId", "settings.reg.reservedId", ""]

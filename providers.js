@@ -250,6 +250,50 @@ PROVIDERS.kimi = {
     aliasModels: false,
 };
 
+// Antigravity is Google's agy CLI spoken over ACP via bridges/acp_bridge.py.
+// `--gemini-dir <stateDir>/agy-gemini --app-data-dir agy-app` keeps Jarvis
+// session DBs separate from the user's TUI history while keeping keyring auth
+// working, and `--include-default-customizations=false` prevents loading
+// global MCPs, AGENTS.md and skills into every chat turn.
+PROVIDERS.agy = {
+    id: "agy",
+    title: "Antigravity",
+    adapter: "acp",
+    bridge: true,
+    caps: {
+        askFirst: true,
+        cost: false,
+        stdinEnabled: true,
+        cancelViaStdin: true,
+        perSessionRestore: false,
+        registryHistory: true
+    },
+
+    buildCommand: function (opts) {
+        var bridge = opts.bridgeScript || "";
+        if (!bridge) return "exit 3";
+        var cmd = "exec python3 " + opts.q(bridge) + " agy acp";
+        if (opts.stateDir) {
+            cmd += " --gemini-dir " + opts.q(opts.stateDir + "/agy-gemini")
+                + " --app-data-dir agy-app";
+        }
+        cmd += " --include-default-customizations=false"
+            + (opts.confirm ? "" : " --dangerously-skip-permissions")
+            + " 2>/dev/null";
+        return cmd;
+    },
+
+    stdinUserFormat: function (text) {
+        return { type: "user", message: { role: "user",
+                 content: [{ type: "text", text: String(text) }] } };
+    },
+
+    parseLine: PROVIDERS.claude.parseLine,
+    canUseTool: false,
+    aliasModels: false,
+    requiresKey: false
+};
+
 // Text of a "result" event for the chat bubble. A run that ends without an
 // answer carries its reason in `errors[]` (claude does this for an unresumed
 // session: "No conversation found with session ID: …"), and printing nothing

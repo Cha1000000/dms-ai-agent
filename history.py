@@ -25,7 +25,7 @@ action = argv[0] if argv else "list"
 # The known providers. An unknown one is rejected: silently answering with the
 # claude catalog (models.py) or with an empty history (here) would make the
 # same wrong input give two different answers.
-KNOWN_PROVIDERS = ("claude", "cvc", "qoder", "kimi")
+KNOWN_PROVIDERS = ("claude", "cvc", "qoder", "kimi", "agy")
 # Transcripts of the stock claude CLI (also run against the CVC gateway).
 TRANSCRIPT_PROVIDERS = ("claude", "cvc")
 # Providers registered in providers.json (acp/codex/claude-cli/openai). Their
@@ -208,6 +208,22 @@ def delete_via_cli(provider, sid, work_dir):
     their CLIs know how to remove both. Deleting the files by hand leaves the
     CLI's own index pointing at a session that is gone.
     """
+    if provider == "agy":
+        if not sid or "/" in sid or ".." in sid:
+            return False
+        state_home = os.path.expanduser(os.environ.get("XDG_STATE_HOME") or "~/.local/state")
+        app_dir = os.path.join(state_home, "dms-agent", "agy-gemini", "agy-app")
+        for suffix in (".db", ".db-wal", ".db-shm"):
+            try:
+                os.remove(os.path.join(app_dir, "conversations", sid + suffix))
+            except OSError:
+                pass
+        shutil.rmtree(os.path.join(app_dir, "brain", sid), ignore_errors=True)
+        try:
+            os.remove(os.path.join(app_dir, "presence", sid + ".lock"))
+        except OSError:
+            pass
+        return True
     if provider != "qoder":
         # Kimi has no session-deleting command; the files are what it has.
         b = transcript_base(provider, work_dir)

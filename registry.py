@@ -34,7 +34,7 @@ KNOWN_ADAPTERS = ("acp", "codex", "claude-cli", "openai")
 # Ids of the built-in providers. A registry entry with one of these would
 # shadow the built-in descriptor (the chat, model catalogs and history are all
 # keyed on the id), so the store refuses them.
-BUILTIN_PROVIDER_IDS = ("claude", "cvc", "qoder", "kimi")
+BUILTIN_PROVIDER_IDS = ("claude", "cvc", "qoder", "kimi", "agy")
 ALLOWED_FIELDS = ("adapter", "title", "command", "baseUrl")
 # The same rule the settings form applies: HTTPS, or plain HTTP for loopback.
 URL_RE = re.compile(

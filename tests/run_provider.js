@@ -24,6 +24,23 @@ if (fn === "kimi_caps") {
     out = PROVIDERS.kimi.buildCommand(Object.assign({
         q: (s) => "'" + String(s).replace(/'/g, "'\\''") + "'",
     }, arg));
+} else if (fn === "agy_caps") {
+    const p = PROVIDERS.agy;
+    out = p ? {
+        id: p.id,
+        title: p.title,
+        adapter: p.adapter || null,
+        bridge: !!p.bridge,
+        caps: p.caps,
+        canUseTool: p.canUseTool,
+        aliasModels: p.aliasModels,
+        requiresKey: !!p.requiresKey,
+        stdinUserFormat: p.stdinUserFormat ? p.stdinUserFormat("hi") : null,
+    } : null;
+} else if (fn === "agy_buildCommand") {
+    out = PROVIDERS.agy ? PROVIDERS.agy.buildCommand(Object.assign({
+        q: (s) => "'" + String(s).replace(/'/g, "'\\''") + "'",
+    }, arg)) : null;
 } else if (fn === "kimi_parseLine") {
     out = PROVIDERS.kimi.parseLine(arg);
 } else if (fn === "qoder_buildCommand") {

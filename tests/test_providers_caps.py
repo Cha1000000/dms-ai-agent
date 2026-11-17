@@ -23,7 +23,7 @@ run = lambda fn, arg=None: json.loads(subprocess.run(
 ).stdout)
 
 CAPS_FN = {"claude": "claude_caps", "cvc": "cvc_caps",
-           "qoder": "qoder_caps", "kimi": "kimi_caps"}
+           "qoder": "qoder_caps", "kimi": "kimi_caps", "agy": "agy_caps"}
 
 
 def _caps(provider):
@@ -35,10 +35,12 @@ def test_only_claude_and_cvc_report_a_price():
     assert _caps("cvc")["cost"] is True
     assert _caps("qoder")["cost"] is False
     assert _caps("kimi")["cost"] is False
+    assert _caps("agy")["cost"] is False
 
 
-def test_only_claude_and_cvc_read_the_next_message_from_stdin():
+def test_only_claude_cvc_and_agy_read_the_next_message_from_stdin():
     assert _caps("claude")["stdinEnabled"] is True
     assert _caps("cvc")["stdinEnabled"] is True
+    assert _caps("agy")["stdinEnabled"] is True
     assert _caps("qoder")["stdinEnabled"] is False
     assert _caps("kimi")["stdinEnabled"] is False

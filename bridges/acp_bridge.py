@@ -54,6 +54,7 @@ _state = {
     "cancelled": False,
     "waiting": False,              # a session/prompt is in flight
     "replaying": False,            # session/load streams the old history
+    "system_prompt_sent": False,   # systemPrompt injected on first new-session turn
     "turn_text": [],
 }
 
@@ -429,6 +430,24 @@ def apply_config(sid, cfg, allow_missing_model=False):
     allow_missing_model: a resumed session whose LoadSessionResponse carries no
     configOptions (optional in ACP v1). The agent then keeps the model the
     session was created with; there is nothing to set and nothing to fail."""
+    want_model = cfg.get("model") or ""
+    want_effort = cfg.get("effort") or ""
+    if want_model:
+        with _state_lock:
+            models = _state.get("models", [])
+        model_ids = {r.get("modelId") for r in models if isinstance(r, dict) and r.get("modelId")}
+        # Agents like `agy acp` publish base families in configOptions and
+        # effort-suffixed ids (e.g. `gemini-4-hydrogen-xhigh`) in
+        # models.availableModels while omitting `xhigh` from thought_level.
+        # When the exact combined id (or bare id without suffix variants) is
+        # offered in availableModels, apply it via session/set_model and skip
+        # redundant thought_level selection.
+        if want_effort:
+            combined = "%s-%s" % (want_model, want_effort)
+            if combined in model_ids:
+                return apply_model_via_models(sid, combined)
+        elif want_model in model_ids:
+            return apply_model_via_models(sid, want_model)
     for field in ("model", "effort"):
         want = cfg.get(field)
         if not want:
@@ -536,7 +555,7 @@ def service_loop(proc):
         mtype = msg.get("type")
         if mtype == "config":
             with _state_lock:
-                _state["config"] = {k: msg.get(k) for k in ("model", "effort", "resumeId", "contextFile")}
+                _state["config"] = {k: msg.get(k) for k in ("model", "effort", "resumeId", "contextFile", "systemPrompt")}
             continue
         if mtype == "control_response":
             resolved = take_permission_answer(msg.get("response") or {})
@@ -555,6 +574,7 @@ def run_turn(msg):
     with _state_lock:
         cfg = _state.get("config", {})
         resume_id = cfg.get("resumeId", "")
+        had_session = bool(_state.get("session", ""))
         # A new turn resets the flag only after the previous result went out —
         # enforced by turn_done guard in emit_result.
         _state["turn_done"] = False
@@ -589,10 +609,23 @@ def run_turn(msg):
             return
         if ctx:
             content = ctx + content
+        sp = cfg.get("systemPrompt") or ""
+        with _state_lock:
+            inject_sp = bool(sp and not had_session and not resume_id and not _state.get("system_prompt_sent"))
+        if inject_sp:
+            if not ctx and content and content[0].get("type") == "text":
+                content[0] = {
+                    "type": "text",
+                    "text": "[System instructions]\n%s\n\n[User message]\n%s" % (sp, content[0].get("text", "")),
+                }
+            else:
+                content = [{"type": "text", "text": "[System instructions]\n%s\n\n[User message]" % sp}] + content
         prompt_id = next_id()
         prompt_q = queue.Queue(maxsize=1)
         with _state_lock:
             _pending_rpc[prompt_id] = prompt_q
+            if inject_sp:
+                _state["system_prompt_sent"] = True
             # History replay (session/load) stops counting as replay only when
             # the real prompt goes out; config updates in between are not part
             # of the turn's answer either.
