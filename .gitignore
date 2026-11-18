@@ -2,5 +2,9 @@
 __pycache__/
 *.pyc
 
+# Local AI agent instructions (kept out of the public DMS plugin repo)
+AGENTS.md
+CLAUDE.md
+
 # Some apps create this when XDG_CACHE_HOME is set with an unexpanded tilde
 ~/
