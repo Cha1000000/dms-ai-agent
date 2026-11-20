@@ -47,8 +47,10 @@ if provider not in KNOWN_PROVIDERS and provider not in REGISTRY_PROVIDERS:
           % (provider, ", ".join(sorted(set(KNOWN_PROVIDERS) | REGISTRY_PROVIDERS))),
           file=sys.stderr)
     sys.exit(2)
+REGISTRY_ENTRY = REGISTRY_ENTRIES.get(provider, {})
 REGISTRY_BACKED = provider not in TRANSCRIPT_PROVIDERS
-OPENAI_BACKED = REGISTRY_ENTRIES.get(provider, {}).get("adapter") == "openai"
+OPENAI_BACKED = REGISTRY_ENTRY.get("adapter") == "openai"
+CLAUDE_CLI_BACKED = REGISTRY_ENTRY.get("adapter") == "claude-cli"
 # "list --all-dirs": every directory with a registered Jarvis session, not
 # just the current one. Each row carries its workDir (compound identity —
 # the same id under two providers or two directories is two sessions).
@@ -64,8 +66,41 @@ TRANSCRIPT_ROOTS = {
 }
 
 
+def _claude_cli_projects_root(entry):
+    cmd = entry.get("command") if isinstance(entry, dict) else None
+    if isinstance(cmd, list):
+        tokens = cmd
+    else:
+        try:
+            tokens = shlex.split(str(cmd or ""))
+        except ValueError:
+            tokens = str(cmd or "").split()
+    for tok in tokens:
+        if isinstance(tok, str) and tok.startswith("CLAUDE_CONFIG_DIR="):
+            val = tok.split("=", 1)[1].strip()
+            if val:
+                return os.path.join(os.path.expanduser(val), "projects")
+    return "~/.claude/projects"
+
+
+def _shared_claude_providers():
+    """Built-in and claude-cli providers sharing ~/.claude/projects."""
+    default_real = os.path.realpath(os.path.expanduser("~/.claude/projects"))
+    shared = list(TRANSCRIPT_PROVIDERS)
+    for pid, meta in REGISTRY_ENTRIES.items():
+        if isinstance(meta, dict) and meta.get("adapter") == "claude-cli":
+            root = os.path.realpath(os.path.expanduser(_claude_cli_projects_root(meta)))
+            if root == default_real:
+                shared.append(pid)
+    return tuple(shared)
+
+
 def transcript_base(provider, work_dir=None):
     root = TRANSCRIPT_ROOTS.get(provider)
+    if root is None:
+        meta = REGISTRY_ENTRIES.get(provider, {})
+        if isinstance(meta, dict) and meta.get("adapter") == "claude-cli":
+            root = _claude_cli_projects_root(meta)
     if root is None:
         return ""
     slug = re.sub(r"[^A-Za-z0-9]", "-", work_dir or os.getcwd())
@@ -73,6 +108,57 @@ def transcript_base(provider, work_dir=None):
 
 
 base = transcript_base(provider)
+
+
+def agy_transcript_file(sid):
+    """Antigravity logs each conversation under agy-app/brain/<sid>/.system_generated/logs."""
+    if not sid or "/" in sid or ".." in sid:
+        return ""
+    state_home = os.path.expanduser(os.environ.get("XDG_STATE_HOME") or "~/.local/state")
+    logs_dir = os.path.join(state_home, "dms-agent", "agy-gemini", "agy-app",
+                            "brain", sid, ".system_generated", "logs")
+    for name in ("transcript_full.jsonl", "transcript.jsonl"):
+        path = os.path.join(logs_dir, name)
+        if os.path.isfile(path):
+            return path
+    return ""
+
+
+def _unwrap_agy_user_text(content):
+    if not isinstance(content, str):
+        return ""
+    text = content
+    m = re.search(r"<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>", text, re.DOTALL)
+    if m:
+        text = m.group(1)
+    if text.lstrip().startswith("[System instructions]"):
+        marker = "\n\n[User message]"
+        idx = text.find(marker)
+        if idx >= 0:
+            text = text[idx + len(marker):]
+    return text.strip()
+
+
+def _parse_agy_transcript(session_file):
+    msgs = []
+    with open(session_file, encoding="utf-8") as f:
+        for line in f:
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(d, dict):
+                continue
+            t = d.get("type")
+            if t == "USER_INPUT":
+                text = _unwrap_agy_user_text(d.get("content", ""))
+                if text:
+                    msgs.append({"role": "user", "content": text})
+            elif t == "PLANNER_RESPONSE":
+                content = d.get("content", "")
+                if isinstance(content, str) and content.strip():
+                    msgs.append({"role": "assistant", "content": content.strip()})
+    return msgs
 
 
 def kimi_wire_file(sid):
@@ -225,6 +311,20 @@ def delete_via_cli(provider, sid, work_dir):
             pass
         return True
     if provider != "qoder":
+        meta = REGISTRY_ENTRIES.get(provider, {})
+        if isinstance(meta, dict) and meta.get("adapter") == "claude-cli":
+            b = transcript_base(provider, work_dir)
+            path = (b + sid + ".jsonl") if b else ""
+            if path and os.path.isfile(path):
+                if not is_agent_session(path):
+                    return False
+                try:
+                    os.remove(path)
+                except OSError:
+                    return False
+                shutil.rmtree(b + sid, ignore_errors=True)
+                forget_synced([sid])
+            return True
         # Kimi has no session-deleting command; the files are what it has.
         b = transcript_base(provider, work_dir)
         if b:
@@ -406,14 +506,22 @@ elif action == "delete":
             if ok or foreign or stale:
                 sessions_registry.remove(provider, sid)
                 entry_removed = True
-                # Claude Code and CheapVibeCode share one transcript store,
-                # so the session is gone for both of them.
-                for other in TRANSCRIPT_PROVIDERS:
+                # Claude Code, CheapVibeCode, and shared claude-cli wrappers
+                # share one transcript store, so the session is gone for all
+                # when the transcript was removed (or already missing here).
+                others = _shared_claude_providers() if (ok or (stale and not foreign)) else TRANSCRIPT_PROVIDERS
+                for other in others:
                     if other != provider:
                         sessions_registry.remove(other, sid)
         elif ok:
             sessions_registry.remove(provider, sid)
             entry_removed = True
+            if CLAUDE_CLI_BACKED:
+                shared = _shared_claude_providers()
+                if provider in shared:
+                    for other in shared:
+                        if other != provider:
+                            sessions_registry.remove(other, sid)
     print(json.dumps({"deleted": 1 if ok else 0,
                       "removed": 1 if (ok or entry_removed) else 0}))
 
@@ -425,10 +533,16 @@ elif action == "rename":
     name = " ".join((argv[2] if len(argv) > 2 else "").split())[:100]
     ok = False
     if sid and "/" not in sid and ".." not in sid:
-        if provider in TRANSCRIPT_PROVIDERS:
-            path = base + sid + ".jsonl"
+        wrote_transcript = False
+        if provider in TRANSCRIPT_PROVIDERS or CLAUDE_CLI_BACKED:
+            if provider in TRANSCRIPT_PROVIDERS:
+                path = base + sid + ".jsonl"
+            else:
+                e = registry_entry(provider, sid)
+                b = transcript_base(provider, e["workDir"]) if e else ""
+                path = (b + sid + ".jsonl") if b else ""
             try:
-                if os.path.isfile(path) and is_agent_session(path):
+                if path and os.path.isfile(path) and is_agent_session(path):
                     with open(path, "rb+") as fh:
                         fh.seek(0, os.SEEK_END)
                         needs_newline = False
@@ -441,12 +555,19 @@ elif action == "rename":
                         data = "".join(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n" for r in records)
                         fh.write((b"\n" if needs_newline else b"") + data.encode("utf-8"))
                     ok = True
+                    wrote_transcript = True
             except OSError:
                 # A read-only transcript must not abort the rename: the
                 # registry title still changes and the panel shows it.
                 ok = False
         existed = registry_entry(provider, sid) is not None
         sessions_registry.rename(provider, sid, name)
+        if wrote_transcript:
+            shared = _shared_claude_providers()
+            if provider in shared:
+                for other in shared:
+                    if other != provider:
+                        sessions_registry.rename(other, sid, name)
         ok = ok or existed
     print(json.dumps({"renamed": 1 if ok else 0}))
 
@@ -483,8 +604,8 @@ elif action == "delete-all":
                 continue
             if e["id"] in removed or not os.path.isfile(base + e["id"] + ".jsonl"):
                 sessions_registry.remove(provider, e["id"])
-        # The other gateway's CLI shares the transcripts, so its entries go too.
-        for other in TRANSCRIPT_PROVIDERS:
+        # Shared transcript stores (Claude Code, CVC, shared claude-cli wrappers).
+        for other in _shared_claude_providers():
             if other != provider:
                 for e in sessions_registry.list(other):
                     if e["workDir"] == here and (
@@ -498,12 +619,17 @@ elif action == "delete-all":
         # remove the entry — the user would lose a live session from history.
         here = os.getcwd()
         failed = 0
+        shared = _shared_claude_providers() if CLAUDE_CLI_BACKED else ()
         for e in sessions_registry.list(provider):
             if e["workDir"] != here:
                 continue
             if delete_via_cli(provider, e["id"], e["workDir"]):
                 removed.append(e["id"])
                 sessions_registry.remove(provider, e["id"])
+                if CLAUDE_CLI_BACKED and provider in shared:
+                    for other in shared:
+                        if other != provider:
+                            sessions_registry.remove(other, e["id"])
             else:
                 failed += 1
         print(json.dumps({"deleted": len(removed), "failed": failed}))
@@ -547,6 +673,14 @@ elif action == "restore":
         e = registry_entry(provider, sid)
         if e:
             origin_dir = e["workDir"]
+    elif provider == "agy":
+        e = registry_entry(provider, sid)
+        if e:
+            origin_dir = e["workDir"]
+        session_file = agy_transcript_file(sid) if e else ""
+        msgs = _parse_agy_transcript(session_file) if session_file else []
+        print(json.dumps({"messages": msgs, "model": "", "effort": "", "originDir": origin_dir}))
+        sys.exit(0)
     elif provider in TRANSCRIPT_PROVIDERS or provider == "qoder":
         # The transcript store is keyed by directory slug: this directory
         # first, then every directory the session registry remembers for the

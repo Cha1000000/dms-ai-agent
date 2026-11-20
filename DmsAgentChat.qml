@@ -202,18 +202,15 @@ Item {
     // bubble is hard to read, so the bubbles stay solid then.
     readonly property bool glassOn: AgentService.liquidGlass && AgentTheme.glassAllowed && BlurService.enabled
     readonly property real panelAlpha: AgentService.backgroundOpacity / 100
-    // The slider also sets how dense the glass tint is: the default 94% keeps the tint as designed,
-    // lower is clearer, and 100% is nearly solid.
+    // In Liquid Glass mode, the slider scales the tint density linearly from its
+    // designed opacity at 100%, so lower values make the glass clearer.
     function glassTint(alpha) {
-        var op = AgentService.backgroundOpacity;
-        var k = op <= 94 ? op / 94 : 1 + (op - 94) / 6 * 0.7;
-        return Math.min(0.97, alpha * k);
+        return Math.max(0, Math.min(1, alpha * panelAlpha));
     }
-    // Text on your own bubbles. On glass the bubble is the accent tinted into a dark
-    // backdrop, and the neon colors are mid-dark, so the text that suits a solid light
-    // accent (dark) is lost on both.
+    // Text on your own bubbles: keep the theme's primaryText when it contrasts well
+    // with the bubble fill, otherwise pick whichever of light/dark wins WCAG contrast.
     readonly property bool bubbleGradient: AgentTheme.neonEnabled
-    readonly property color userBubbleText: (glassOn || bubbleGradient) ? AgentTheme.onDark : AgentTheme.primaryText
+    readonly property color userBubbleText: AgentTheme.contrastText(AgentTheme.bubbleFrom, AgentTheme.bubbleTo, AgentTheme.primaryText)
     function bubbleColor(base, glassAlpha) {
         return Theme.withAlpha(base, glassOn ? glassTint(glassAlpha) : panelAlpha);
     }
@@ -264,10 +261,10 @@ Item {
         var p = glassPart(item);
         if (p.width <= 0 || p.height <= 0) return p;
         var a = item.mapToItem(null, p.x, p.y), b = item.mapToItem(null, p.x + p.width, p.y + p.height);
-        // Region coordinates are integers: round outwards, so the patch never ends
-        // up smaller than the tint drawn over it.
-        var x0 = Math.floor(a.x), y0 = Math.floor(a.y);
-        return Qt.rect(x0, y0, Math.ceil(b.x) - x0, Math.ceil(b.y) - y0);
+        // Region coordinates are integers: round to nearest pixel so fractional
+        // uiScale does not extend the compositor glass lens outside the card edge.
+        var x0 = Math.round(a.x), y0 = Math.round(a.y);
+        return Qt.rect(x0, y0, Math.max(0, Math.round(b.x) - x0), Math.max(0, Math.round(b.y) - y0));
     }
 
     // Which monitor this chat belongs to — the position buttons are per-monitor.
@@ -400,7 +397,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         height: inputCol.height
-        radius: Theme.cornerRadius + Theme.spacingS; color: chatRoot.bubbleColor(AgentTheme.surfaceContainer, 0.55)
+        radius: Theme.cornerRadius + Theme.spacingS; color: chatRoot.bubbleColor(AgentTheme.surfaceContainer, 0.76)
         z: 10
 
         Component.onCompleted: chatRoot.glassReg(inputCard)
@@ -1580,6 +1577,11 @@ Item {
         anchors.left: parent.left; anchors.right: parent.right
         anchors.leftMargin: Theme.spacingS; anchors.rightMargin: Theme.spacingS
         clip: true
+        // The feed has no backdrop of its own (bubbles float over the desktop),
+        // so DFlickable's edge fades would resolve to the host surface color and
+        // paint an opaque full-width band at the top and bottom. Older DMS has
+        // no such property, hence the guarded assignment.
+        Component.onCompleted: if ("fadeEdges" in messageFlick) messageFlick.fadeEdges = false
         contentHeight: messageColumn.height
         contentWidth: width
 
@@ -1640,8 +1642,8 @@ Item {
                 id: toolBubble; anchors.left: parent.left
                 width: Math.min(parent.width * 0.85, toolIcon.width + toolText.implicitWidth + toolIcon.anchors.leftMargin + chatRoot.gap + toolText.anchors.rightMargin + Theme.spacingXS)
                 height: chatRoot.controlSize; radius: height / 2
-                color: chatRoot.glassOn ? "transparent" : AgentTheme.surface
-                border.width: chatRoot.glassOn ? 0 : 1; border.color: AgentTheme.outlineVariant
+                color: chatRoot.glassOn ? "transparent" : Theme.withAlpha(AgentTheme.surface, chatRoot.panelAlpha)
+                border.width: chatRoot.glassOn ? 0 : 1; border.color: Theme.withAlpha(AgentTheme.outlineVariant, chatRoot.panelAlpha)
 
                 Component.onCompleted: chatRoot.glassReg(toolBubble)
                 Component.onDestruction: chatRoot.glassUnreg(toolBubble)
@@ -1649,7 +1651,7 @@ Item {
 
                 Loader {
                     anchors.fill: parent; active: chatRoot.glassOn
-                    sourceComponent: GlassTint { chat: chatRoot; bubble: toolBubble; color: Theme.withAlpha(AgentTheme.surfaceContainer, chatRoot.glassTint(0.55)) }
+                    sourceComponent: GlassTint { chat: chatRoot; bubble: toolBubble; color: Theme.withAlpha(AgentTheme.surfaceContainer, chatRoot.glassTint(0.76)) }
                 }
 
                 DankIcon {
@@ -1715,8 +1717,8 @@ Item {
                     anchors.fill: parent; active: chatRoot.glassOn
                     sourceComponent: GlassTint {
                         chat: chatRoot; bubble: uRect
-                        color: Theme.withAlpha(AgentTheme.bubbleFrom, chatRoot.glassTint(0.75))
-                        toColor: Theme.withAlpha(AgentTheme.bubbleTo, chatRoot.glassTint(0.75))
+                        color: Theme.withAlpha(AgentTheme.bubbleFrom, chatRoot.glassTint(0.82))
+                        toColor: Theme.withAlpha(AgentTheme.bubbleTo, chatRoot.glassTint(0.82))
                     }
                 }
 
@@ -1789,7 +1791,7 @@ Item {
 
                 Loader {
                     anchors.fill: parent; active: chatRoot.glassOn
-                    sourceComponent: GlassTint { chat: chatRoot; bubble: aRect; color: Theme.withAlpha(AgentTheme.surfaceContainer, chatRoot.glassTint(0.55)) }
+                    sourceComponent: GlassTint { chat: chatRoot; bubble: aRect; color: Theme.withAlpha(AgentTheme.surfaceContainer, chatRoot.glassTint(0.76)) }
                 }
 
                 HoverHandler { id: aHover }

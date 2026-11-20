@@ -18,22 +18,27 @@ Singleton {
 
     readonly property var presets: ({
         dms: { neon: false },
-        neon: { neon: true, primary: "#4F7BFF", primaryText: "#ffffff" },
+        neon: {
+            neon: true,
+            primary: "#3662E8", primaryText: "#ffffff",
+            bubbleFrom: "#2850C8", bubbleTo: "#6B34C9"
+        },
         umbrella: {
             neon: true,
-            primary: "#b8101a", primaryText: "#ffffff",
+            primary: "#9e0006", primaryText: "#ffffff",
             surface: "#140607", surfaceContainer: "#1c0a0c", surfaceContainerHighest: "#2a1013",
-            surfaceVariant: "#2e1215", surfaceText: "#f2e6e6", surfaceVariantText: "#b59a9c",
+            surfaceVariant: "#2e1215", surfaceText: "#f2e6e6", surfaceVariantText: "#cab2b4",
             outlineVariant: "#5a2a2e", danger: "#e0182d", hoverTint: "#8a3036",
-            bubbleFrom: "#b8101a", bubbleTo: "#8a0a12",
+            bubbleFrom: "#680003", bubbleTo: "#360002",
             neon0: "#ff2a2a", neon1: "#e0102a", neon2: "#ff2a55", neon3: "#b5083a"
         },
         dark: {
             neon: false,
             primary: "#7aa2f7", primaryText: "#101014",
             surface: "#16161a", surfaceContainer: "#1e1e24", surfaceContainerHighest: "#2a2a32",
-            surfaceVariant: "#34343d", surfaceText: "#e6e6ea", surfaceVariantText: "#9a9aa5",
-            outlineVariant: "#44444e", danger: "#ef5350"
+            surfaceVariant: "#34343d", surfaceText: "#e6e6ea", surfaceVariantText: "#c2c2ce",
+            outlineVariant: "#44444e", danger: "#ef5350",
+            bubbleFrom: "#2B467C", bubbleTo: "#2B467C"
         },
         light: {
             neon: false, glass: false,
@@ -50,6 +55,28 @@ Singleton {
     // The key colors stand for several roles each; the rest of a role group is derived so
     // that a light or dark choice stays readable.
     function _lum(c) { var k = Qt.color(c); return 0.2126 * k.r + 0.7152 * k.g + 0.0722 * k.b; }
+    function _srgbToLin(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+    function _relLum(c) {
+        var k = Qt.color(c);
+        return 0.2126 * _srgbToLin(k.r) + 0.7152 * _srgbToLin(k.g) + 0.0722 * _srgbToLin(k.b);
+    }
+    function _contrast(c1, c2) {
+        var l1 = _relLum(c1), l2 = _relLum(c2);
+        return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    }
+
+    // Picks a legible foreground color for a bubble fill (or two-stop gradient):
+    // keeps `preferred` (e.g. Material onPrimary) when it already clears WCAG AA,
+    // otherwise chooses whichever of light (`onDark`) or dark (`#101014`) wins.
+    function contrastText(bg1, bg2, preferred) {
+        function score(fg) {
+            var r = _contrast(fg, bg1);
+            return (bg2 !== undefined && bg2 !== null) ? Math.min(r, _contrast(fg, bg2)) : r;
+        }
+        if (preferred !== undefined && preferred !== null && score(preferred) >= 4.5)
+            return preferred;
+        return score(onDark) >= score("#101014") ? onDark : "#101014";
+    }
 
     // Toward the opposite end of the lightness scale, e.g. a dark panel gets lighter.
     function _lift(c, t) { return _mix(c, _lum(c) < 0.5 ? "#ffffff" : "#000000", t); }
@@ -58,7 +85,9 @@ Singleton {
         var c = custom || ({});
         switch (name) {
         case "primary": return c.accent;
-        case "primaryText": return c.accent ? (_lum(c.accent) > 0.55 ? "#101014" : "#ffffff") : undefined;
+        case "primaryText": return c.accent ? (_contrast(c.accent, "#101014") > _contrast(c.accent, "#ffffff") ? "#101014" : "#ffffff") : undefined;
+        case "bubbleFrom": return neonEnabled ? ((c.neonFrom && c.neonTo) ? _mix(c.neonFrom, c.neonTo, 0.35) : c.neonFrom) : c.accent;
+        case "bubbleTo": return neonEnabled ? ((c.neonFrom && c.neonTo) ? _mix(c.neonFrom, c.neonTo, 0.7) : c.neonTo) : c.accent;
         case "surfaceContainer": return c.panel;
         case "surfaceContainerHighest": return c.panel ? _lift(c.panel, 0.08) : undefined;
         case "surfaceVariant": return c.panel ? _lift(c.panel, 0.16) : undefined;
@@ -82,6 +111,14 @@ Singleton {
 
     function pick(name, dmsValue) {
         var v = (advanced || ({}))[name];
+        if (!v) v = _fromCustom(name);
+        if (!v) v = _preset[name];
+        return v ? v : dmsValue;
+    }
+
+    function _pickBubble(name, neonRole, dmsValue) {
+        var adv = advanced || ({});
+        var v = adv[name] || (neonEnabled ? adv[neonRole] : adv.primary);
         if (!v) v = _fromCustom(name);
         if (!v) v = _preset[name];
         return v ? v : dmsValue;
@@ -113,8 +150,8 @@ Singleton {
     readonly property bool glassAllowed: _preset.glass !== false
     // Your own message bubbles: a gradient between two of the neon colors in themes with neon
     // (matching the window rim), the accent otherwise.
-    readonly property color bubbleFrom: pick("bubbleFrom", neonEnabled ? neon1 : primary)
-    readonly property color bubbleTo: pick("bubbleTo", neonEnabled ? neon2 : primary)
+    readonly property color bubbleFrom: _pickBubble("bubbleFrom", "neon1", neonEnabled ? neon1 : primary)
+    readonly property color bubbleTo: _pickBubble("bubbleTo", "neon2", neonEnabled ? neon2 : primary)
     readonly property color neon0: pick("neon0", "#3EE0FF")
     readonly property color neon1: pick("neon1", "#4F7BFF")
     readonly property color neon2: pick("neon2", "#9B5CFF")

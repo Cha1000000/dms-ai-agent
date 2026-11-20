@@ -53,46 +53,25 @@ Item {
         anchors.fill: parent
         sourceComponent: Item {
             // Painted into a texture only; what is shown are the two effects below.
-            Canvas {
-                id: ringCanvas
+            ShaderEffect {
+                id: ringSdf
                 visible: false
                 anchors.fill: parent
+                fragmentShader: Qt.resolvedUrl("shaders/neon_ring.frag.qsb")
 
-                onWidthChanged: requestPaint()
-                onHeightChanged: requestPaint()
-                Connections {
-                    target: neon
-                    function onRadiusChanged() { ringCanvas.requestPaint(); }
-                    function onThicknessChanged() { ringCanvas.requestPaint(); }
-                }
-                Connections {
-                    target: AgentTheme
-                    function onNeon0Changed() { ringCanvas.requestPaint(); }
-                    function onNeon1Changed() { ringCanvas.requestPaint(); }
-                    function onNeon2Changed() { ringCanvas.requestPaint(); }
-                    function onNeon3Changed() { ringCanvas.requestPaint(); }
-                }
-
-                onPaint: {
-                    var c = getContext("2d");
-                    c.reset();
-                    var t = neon.thickness, r = neon.radius + t / 2;
-                    var g = c.createLinearGradient(0, 0, width, 0);
-                    g.addColorStop(0.0, AgentTheme.neon0);
-                    g.addColorStop(0.35, AgentTheme.neon1);
-                    g.addColorStop(0.7, AgentTheme.neon2);
-                    g.addColorStop(1.0, AgentTheme.neon3);
-                    c.strokeStyle = g;
-                    c.lineWidth = t;
-                    c.beginPath();
-                    c.roundedRect(t / 2, t / 2, width - t, height - t, r, r);
-                    c.stroke();
-                }
+                property real widthPx: width
+                property real heightPx: height
+                property real radiusPx: neon.radius + neon.thickness
+                property real thicknessPx: neon.thickness
+                property vector4d neon0: Qt.vector4d(AgentTheme.neon0.r, AgentTheme.neon0.g, AgentTheme.neon0.b, AgentTheme.neon0.a)
+                property vector4d neon1: Qt.vector4d(AgentTheme.neon1.r, AgentTheme.neon1.g, AgentTheme.neon1.b, AgentTheme.neon1.a)
+                property vector4d neon2: Qt.vector4d(AgentTheme.neon2.r, AgentTheme.neon2.g, AgentTheme.neon2.b, AgentTheme.neon2.a)
+                property vector4d neon3: Qt.vector4d(AgentTheme.neon3.r, AgentTheme.neon3.g, AgentTheme.neon3.b, AgentTheme.neon3.a)
             }
 
             MultiEffect {
-                source: ringCanvas
-                anchors.fill: ringCanvas
+                source: ringSdf
+                anchors.fill: ringSdf
                 blurEnabled: true
                 blurMax: 20
                 blur: 1.0
@@ -101,8 +80,8 @@ Item {
             }
 
             MultiEffect {
-                source: ringCanvas
-                anchors.fill: ringCanvas
+                source: ringSdf
+                anchors.fill: ringSdf
                 z: -1
                 blurEnabled: true
                 blurMax: 24

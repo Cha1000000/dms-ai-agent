@@ -117,3 +117,71 @@ def test_delete_all_scopes_to_cwd(tmp_path):
     assert not (app_dir / "conversations" / "agy-1.db").exists()
     assert (app_dir / "conversations" / "agy-2.db").is_file()
     assert [r["id"] for r in json.loads(run_history(state, w2, "list").stdout)] == ["agy-2"]
+
+
+def test_restore_reads_agy_transcript_full_and_unwraps_prompts(tmp_path):
+    state = tmp_path / "state"
+    work = tmp_path / "proj"
+    work.mkdir()
+    app_dir = create_agy_session_files(state, "agy-1")
+    logs = app_dir / "brain" / "agy-1" / ".system_generated" / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    records = [
+        {
+            "step_index": 0,
+            "type": "USER_INPUT",
+            "content": (
+                "<USER_REQUEST>\n"
+                "[System instructions]\nYou are a helper.\n\n"
+                "[User message]\nПривет! Проверка связи.\n"
+                "</USER_REQUEST>\n"
+                "<ADDITIONAL_METADATA>\ntime: 2026\n</ADDITIONAL_METADATA>"
+            ),
+        },
+        {"step_index": 1, "type": "PLANNER_RESPONSE", "content": ""},
+        {"step_index": 2, "type": "PLANNER_RESPONSE", "content": "Привет! Всё работает."},
+        {
+            "step_index": 3,
+            "type": "USER_INPUT",
+            "content": "<USER_REQUEST>\nВторой вопрос\n</USER_REQUEST>\n<ADDITIONAL_METADATA>x</ADDITIONAL_METADATA>",
+        },
+        {"step_index": 4, "type": "PLANNER_RESPONSE", "content": "Ответ 2"},
+    ]
+    (logs / "transcript_full.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records))
+    run_history(state, work, "register", "agy-1", "Demo")
+
+    data = json.loads(run_history(state, work, "restore", "agy-1", str(work)).stdout)
+    assert data == {
+        "messages": [
+            {"role": "user", "content": "Привет! Проверка связи."},
+            {"role": "assistant", "content": "Привет! Всё работает."},
+            {"role": "user", "content": "Второй вопрос"},
+            {"role": "assistant", "content": "Ответ 2"},
+        ],
+        "model": "",
+        "effort": "",
+        "originDir": str(work),
+    }
+
+
+def test_restore_falls_back_to_compact_transcript_and_ignores_unregistered(tmp_path):
+    state = tmp_path / "state"
+    work = tmp_path / "proj"
+    work.mkdir()
+    app_dir = create_agy_session_files(state, "agy-compact")
+    logs = app_dir / "brain" / "agy-compact" / ".system_generated" / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    (logs / "transcript.jsonl").write_text(
+        json.dumps({"type": "USER_INPUT", "content": "plain message"}) + "\n"
+        + json.dumps({"type": "PLANNER_RESPONSE", "content": "plain reply"}) + "\n"
+    )
+    # Unregistered TUI/orphan transcript must not be restored.
+    assert json.loads(run_history(state, work, "restore", "agy-compact").stdout)["messages"] == []
+
+    run_history(state, work, "register", "agy-compact", "Compact")
+    data = json.loads(run_history(state, work, "restore", "agy-compact").stdout)
+    assert data["messages"] == [
+        {"role": "user", "content": "plain message"},
+        {"role": "assistant", "content": "plain reply"},
+    ]
+

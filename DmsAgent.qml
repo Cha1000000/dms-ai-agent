@@ -95,6 +95,13 @@ PluginComponent {
         }
     }
 
+    function _clampInt(raw, fallback, lo, hi) {
+        if (raw === undefined || raw === null || raw === "")
+            return fallback;
+        var n = Math.round(Number(raw));
+        return isNaN(n) ? fallback : Math.max(lo, Math.min(hi, n));
+    }
+
     onPluginDataChanged: {
         loadPanelPositions();
         if (!pluginData) return;
@@ -113,12 +120,12 @@ PluginComponent {
                 ? savedModels[savedProvider]
                 : (pluginData.claudeModel || "haiku");
         AgentService.maxTokens = parseInt(pluginData.maxTokens) || 1024;
-        AgentService.bubbleFontSize = parseInt(pluginData.bubbleFontSize) || 13;
-        AgentService.panelHeightPercent = parseInt(pluginData.panelHeightPercent) || 75;
-        AgentService.backgroundOpacity = parseInt(pluginData.backgroundOpacity) || 100;
+        AgentService.bubbleFontSize = _clampInt(pluginData.bubbleFontSize, AgentService.bubbleFontSizeDefault, AgentService.bubbleFontSizeMin, AgentService.bubbleFontSizeMax);
+        AgentService.panelHeightPercent = _clampInt(pluginData.panelHeightPercent, 75, 40, 95);
+        AgentService.backgroundOpacity = _clampInt(pluginData.backgroundOpacity, 100, 30, 100);
         AgentService.liquidGlass = pluginData.liquidGlass === true;
         AgentService.statusLineCollapsed = pluginData.statusLineCollapsed === true;
-        AgentService.uiScale = Math.max(80, Math.min(125, parseInt(pluginData.uiScale) || 100));
+        AgentService.uiScale = _clampInt(pluginData.uiScale, 100, 80, 125);
         // The old "Extended Thinking" toggle did nothing but change the status text;
         // whoever had it on gets "high".
         // "" is a real choice (Auto), so only a missing key falls back.

@@ -36,8 +36,10 @@ PluginSettings {
     // onPluginServiceChanged (variants, child reloads); redefining either here
     // would override them. A 0 ms timer and a change of our own flag do the
     // post-init read instead.
+    property int dataRevision: 0
     property bool serviceReady: pluginService !== null
     onServiceReadyChanged: {
+        dataRevision++;
         Qt.callLater(reloadLanguage);
         // The stored provider can only be resolved once plugin data is here:
         // a registry id read earlier falls back to the default label.
@@ -46,7 +48,10 @@ PluginSettings {
     Timer {
         interval: 0
         running: true
-        onTriggered: root.reloadLanguage()
+        onTriggered: {
+            root.dataRevision++;
+            root.reloadLanguage();
+        }
     }
     Connections {
         target: root.pluginService
@@ -54,6 +59,7 @@ PluginSettings {
         function onPluginDataChanged(changedPluginId) {
             if (changedPluginId !== root.pluginId)
                 return;
+            root.dataRevision++;
             root.reloadLanguage();
             // The chat also changes claudeModel on its own: restoring the
             // provider's saved model, or replacing a foreign id with one from
@@ -141,12 +147,91 @@ PluginSettings {
         return props["node.description"] || node.description || node.nickname || node.name;
     }
 
-    // SliderSetting reads its stored value synchronously in Component.onCompleted,
-    // before the host has handed over pluginService, so it silently keeps the
-    // default and shows it after the settings are reopened (String/Toggle settings
-    // defer the read with Qt.callLater and are fine). Do the same here.
-    component SavedSlider: SliderSetting {
-        Component.onCompleted: Qt.callLater(loadValue)
+    function _clampInt(raw, fallback, lo, hi) {
+        if (raw === undefined || raw === null || raw === "")
+            return fallback;
+        const n = Math.round(Number(raw));
+        return isNaN(n) ? fallback : Math.max(lo, Math.min(hi, n));
+    }
+
+    // Integer slider modeled after InterAss NumberSetting: saves on release
+    // instead of every drag pixel (each write rewrites plugin_settings.json and
+    // triggers onPluginDataChanged in every bar instance), avoids spurious saves
+    // on settings open, and stays synced with external changes (e.g. Ctrl+wheel).
+    component NumberSetting: Column {
+        id: num
+
+        required property string settingKey
+        required property string label
+        property string description: ""
+        property int defaultValue: 0
+        property int minimum: 0
+        property int maximum: 100
+        property string unit: ""
+
+        readonly property int storedValue: {
+            root.serviceReady;
+            root.dataRevision;
+            return root._clampInt(root.loadValue(settingKey, defaultValue), defaultValue, minimum, maximum);
+        }
+
+        width: parent.width
+        spacing: Theme.spacingS
+
+        StyledText {
+            text: num.label
+            font.pixelSize: Theme.fontSizeMedium
+            font.weight: Theme.fontWeightMedium
+            color: Theme.surfaceText
+        }
+
+        StyledText {
+            text: num.description
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.surfaceVariantText
+            width: parent.width
+            wrapMode: Text.WordWrap
+            visible: num.description !== ""
+        }
+
+        DSlider {
+            id: slider
+            upDownKeysStep: false
+            width: parent.width
+            minimum: num.minimum
+            maximum: num.maximum
+            unit: num.unit
+            wheelEnabled: false
+            thumbOutlineColor: Theme.withAlpha(Theme.surfaceContainerHighest, Theme.popupTransparency)
+
+            // Capture value from sliderValueChanged: isDragging is cleared at the
+            // end of release and the Binding below restores slider.value right away.
+            property int picked: num.storedValue
+            onIsDraggingChanged: {
+                if (isDragging)
+                    picked = value;
+            }
+            onSliderValueChanged: v => picked = v
+            onSliderDragFinished: {
+                if (picked !== num.storedValue)
+                    root.saveValue(num.settingKey, picked);
+            }
+            Connections {
+                target: num
+                function onStoredValueChanged() {
+                    if (!slider.isDragging)
+                        slider.picked = num.storedValue;
+                }
+            }
+        }
+
+        Binding {
+            target: slider
+            property: "value"
+            value: num.storedValue
+            when: !slider.isDragging
+            restoreMode: Binding.RestoreNone
+        }
     }
 
     // SelectionSetting reads synchronously too and shows its default after reopening.
@@ -1334,7 +1419,7 @@ PluginSettings {
                     ]
                 }
 
-                SavedSlider {
+                NumberSetting {
                     settingKey: "uiScale"
                     label: I18n.t(root.uiLanguage, "settings.scale.label")
                     description: I18n.t(root.uiLanguage, "settings.scale.desc")
@@ -1429,7 +1514,7 @@ PluginSettings {
                     color: Theme.surfaceText
                 }
 
-                SavedSlider {
+                NumberSetting {
                     settingKey: "bubbleFontSize"
                     label: I18n.t(root.uiLanguage, "settings.textSize.label")
                     description: I18n.t(root.uiLanguage, "settings.textSize.desc")
@@ -1439,7 +1524,7 @@ PluginSettings {
                     unit: "px"
                 }
 
-                SavedSlider {
+                NumberSetting {
                     settingKey: "panelHeightPercent"
                     label: I18n.t(root.uiLanguage, "settings.chatHeight.label")
                     description: I18n.t(root.uiLanguage, "settings.chatHeight.desc")
@@ -1449,7 +1534,7 @@ PluginSettings {
                     unit: "%"
                 }
 
-                SavedSlider {
+                NumberSetting {
                     settingKey: "backgroundOpacity"
                     label: I18n.t(root.uiLanguage, "settings.transparency.label")
                     description: I18n.t(root.uiLanguage, "settings.transparency.desc")
