@@ -202,6 +202,8 @@ Item {
     // bubble is hard to read, so the bubbles stay solid then.
     readonly property bool glassOn: AgentService.liquidGlass && AgentTheme.glassAllowed && BlurService.enabled
     readonly property real panelAlpha: AgentService.backgroundOpacity / 100
+    // Backdrop behind the whole chat, with its own slider (0 = off)
+    readonly property real backdropAlpha: AgentService.backdropOpacity / 100
     // In Liquid Glass mode, the slider scales the tint density linearly from its
     // designed opacity at 100%, so lower values make the glass clearer.
     function glassTint(alpha) {
@@ -388,6 +390,32 @@ Item {
         blur: 16
         offset: Qt.vector2d(0, -2)
         color: Theme.withAlpha(AgentTheme.shadow, 0.4)
+    }
+
+    // Shadow around the whole chat
+    RectangularShadow {
+        visible: backdrop.visible && AgentService.chatShadow
+        z: -2
+        anchors.fill: backdrop
+        radius: backdrop.radius
+        blur: 22
+        spread: 1
+        color: Theme.withAlpha("#000000", 0.7 * chatRoot.backdropAlpha)
+    }
+
+    // Backdrop behind the messages and the input card
+    Rectangle {
+        id: backdrop
+        visible: !chatRoot.glassOn && messageModel.count > 0 && chatRoot.backdropAlpha > 0
+        z: -1
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: inputCard.bottom
+        height: Math.min(parent.height, messagesContent.height + inputCard.height + chatRoot.inset * 2)
+        radius: inputCard.radius
+        color: Theme.withAlpha(AgentTheme.surface, chatRoot.backdropAlpha)
+        border.width: 1
+        border.color: Theme.withAlpha(AgentTheme.outlineVariant, 0.3 * chatRoot.backdropAlpha)
     }
 
     // --- Input Card (anchored to bottom) ---

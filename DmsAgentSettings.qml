@@ -234,6 +234,19 @@ PluginSettings {
         }
     }
 
+    // A nested ToggleSetting tries to load before the plugin service is
+    // set, is never asked again and then refuses to save.
+    component SavedToggle: ToggleSetting {
+        id: savedToggle
+        readonly property bool serviceReady: root.serviceReady
+        onServiceReadyChanged: if (serviceReady) Qt.callLater(loadValue)
+        Component.onCompleted: lateLoad.start()
+        property Timer lateLoad: Timer {
+            interval: 200
+            onTriggered: if (!savedToggle.isInitialized) savedToggle.loadValue()
+        }
+    }
+
     // SelectionSetting reads synchronously too and shows its default after reopening.
     component SavedSelection: SelectionSetting {
         Component.onCompleted: Qt.callLater(loadValue)
@@ -1335,7 +1348,7 @@ PluginSettings {
                     defaultValue: ""
                 }
 
-                ToggleSetting {
+                SavedToggle {
                     settingKey: "restoreSessionModel"
                     label: I18n.t(root.uiLanguage, "settings.sessionModel.label")
                     description: I18n.t(root.uiLanguage, "settings.sessionModel.desc")
@@ -1429,7 +1442,7 @@ PluginSettings {
                     unit: "%"
                 }
 
-                ToggleSetting {
+                SavedToggle {
                     id: customToggle
                     settingKey: "themeCustomOn"
                     label: I18n.t(root.uiLanguage, "settings.customColors.label")
@@ -1450,7 +1463,7 @@ PluginSettings {
                     ColorSetting { settingKey: "themeColor_neonTo"; label: I18n.t(root.uiLanguage, "settings.color.neonTo"); description: I18n.t(root.uiLanguage, "settings.color.neonTo.desc"); defaultValue: AgentTheme.neon3.toString() }
                 }
 
-                ToggleSetting {
+                SavedToggle {
                     id: advancedToggle
                     settingKey: "themeAdvancedOn"
                     label: I18n.t(root.uiLanguage, "settings.advanced.label")
@@ -1544,14 +1557,31 @@ PluginSettings {
                     unit: "%"
                 }
 
-                ToggleSetting {
+                NumberSetting {
+                    settingKey: "backdropOpacity"
+                    label: I18n.t(root.uiLanguage, "settings.backdrop.label")
+                    description: I18n.t(root.uiLanguage, "settings.backdrop.desc")
+                    defaultValue: 0
+                    minimum: 0
+                    maximum: 100
+                    unit: "%"
+                }
+
+                SavedToggle {
+                    settingKey: "chatShadow"
+                    label: I18n.t(root.uiLanguage, "settings.shadow.label")
+                    description: I18n.t(root.uiLanguage, "settings.shadow.desc")
+                    defaultValue: true
+                }
+
+                SavedToggle {
                     settingKey: "liquidGlass"
                     label: I18n.t(root.uiLanguage, "settings.glass.label")
                     description: I18n.t(root.uiLanguage, "settings.glass.desc")
                     defaultValue: false
                 }
 
-                ToggleSetting {
+                SavedToggle {
                     settingKey: "updateNotify"
                     label: I18n.t(root.uiLanguage, "settings.updateNotice.label")
                     description: I18n.t(root.uiLanguage, "settings.updateNotice.desc")
@@ -1626,7 +1656,7 @@ PluginSettings {
                     options: micOptions
                 }
 
-                ToggleSetting {
+                SavedToggle {
                     settingKey: "voiceWarmup"
                     label: I18n.t(root.uiLanguage, "settings.warmup.label")
                     description: I18n.t(root.uiLanguage, "settings.warmup.desc")
