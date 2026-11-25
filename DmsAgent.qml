@@ -123,6 +123,8 @@ PluginComponent {
         AgentService.bubbleFontSize = _clampInt(pluginData.bubbleFontSize, AgentService.bubbleFontSizeDefault, AgentService.bubbleFontSizeMin, AgentService.bubbleFontSizeMax);
         AgentService.panelHeightPercent = _clampInt(pluginData.panelHeightPercent, 75, 40, 95);
         AgentService.backgroundOpacity = _clampInt(pluginData.backgroundOpacity, 100, 30, 100);
+        AgentService.backdropOpacity = _clampInt(pluginData.backdropOpacity, 0, 0, 100);
+        AgentService.chatShadow = pluginData.chatShadow !== false;
         AgentService.liquidGlass = pluginData.liquidGlass === true;
         AgentService.statusLineCollapsed = pluginData.statusLineCollapsed === true;
         AgentService.uiScale = _clampInt(pluginData.uiScale, 100, 80, 125);
@@ -203,6 +205,8 @@ PluginComponent {
         // the compositor per step). Only the chat itself takes input: everything
         // else is masked out and clicks go through to the windows underneath.
         readonly property real ui: AgentService.uiScale / 100
+        // Room for the shadow above and below the chat
+        readonly property real shadowPad: AgentService.backdropOpacity > 0 && AgentService.chatShadow && !agentChat.glassOn ? 18 : 0
         // Natural width of the chat, a layout size like the fixed popupWidth of the
         // DMS popouts; Window Scale zooms it.
         readonly property real chatWidth: 660 * ui
@@ -266,20 +270,21 @@ PluginComponent {
         WlrLayershell.namespace: "dms:agent"
         WlrLayershell.exclusiveZone: 0
         WlrLayershell.keyboardFocus: isVisible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-        WlrLayershell.margins.bottom: Theme.iconSizeLarge + Theme.spacingM
+        WlrLayershell.margins.bottom: Theme.iconSizeLarge + Theme.spacingM - shadowPad
 
         // Отсчитывается от монитора, на котором панель показана, за вычетом
         // отступа снизу; на маленьком экране не должна упереться в бар.
         implicitHeight: {
-            var available = (screen ? screen.height : 1080) - WlrLayershell.margins.bottom - Theme.spacingXL * 2;
+            var available = (screen ? screen.height : 1080) - WlrLayershell.margins.bottom - shadowPad - Theme.spacingXL * 2;
             var base = Math.max(420, Math.round(available * AgentService.panelHeightPercent / 100));
-            return Math.min(available, Math.round(base * ui));
+            return Math.min(available, Math.round(base * ui)) + 2 * shadowPad;
         }
 
         Item {
             id: slot
             width: Math.min(agentPanel.chatWidth, agentPanel.width)
-            height: parent.height
+            y: agentPanel.shadowPad
+            height: parent.height - 2 * agentPanel.shadowPad
             x: agentPanel.dragging ? agentPanel.dragX
                                    : agentPanel.chatFraction * Math.max(0, agentPanel.width - width)
             Behavior on x {
